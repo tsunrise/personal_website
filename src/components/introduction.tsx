@@ -9,7 +9,6 @@ interface Props {}
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
     introContent: {
-        fontFamily: `Arial, Helvetica, sans-serif`,
         fontStyle: `bold`,
         fontSize: 20,
         color: blue[700],
@@ -36,7 +35,7 @@ export default function Introduction(props: Props){
 
 
     return <Typography className={classes.introContent} align={"center"}>
-                I'm <TextLoop children={roles}  />.
-            </Typography>
+        I'm <TextLoop children={roles} springConfig={{stiffness: 180, damping: 8}}/>.
+    </Typography>
 
 }

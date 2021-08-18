@@ -1,6 +1,6 @@
 import React, {useEffect} from 'react';
 import MainGrid from "./components/main";
-
+import '@fontsource/roboto';
 
 function App() {
     useEffect(()=>{

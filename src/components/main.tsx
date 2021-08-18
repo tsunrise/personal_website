@@ -6,6 +6,7 @@ import HeadBar from "./headbar";
 import Heading from "./heading";
 import Introduction from "./introduction";
 import ContactGadget from "./contact/contact";
+import BackgroundInfo from "./background";
 
 
 
@@ -82,7 +83,9 @@ export default function MainGrid() {
                         <Grid item className={classes.mainItem}>
                             <Introduction/>
                         </Grid>
-
+                        <Grid item className={classes.mainItem}>
+                            <BackgroundInfo/>
+                        </Grid>
 
                         {
                             elementPlaceHolders
