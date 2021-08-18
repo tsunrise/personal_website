@@ -1,11 +1,11 @@
 //! defines the website layout
 
 import React, {useEffect, useState} from "react";
-import {createStyles, Grid, makeStyles, Paper, Theme} from "@material-ui/core";
+import {createStyles, Grid, Hidden, makeStyles, Paper, Theme} from "@material-ui/core";
 import HeadBar from "./headbar";
 import Heading from "./heading";
-import ContactBar from "./rightbar/contacts";
 import Introduction from "./introduction";
+import ContactGadget from "./contact/contact";
 
 
 
@@ -25,6 +25,9 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     },
     fullWidth: {
         width: '100%'
+    },
+    mainItem: {
+        margin: 5
     }
 }))
 
@@ -53,6 +56,11 @@ export default function MainGrid() {
         return () => {window.removeEventListener("scroll", handleScroll)}
     })
 
+    let elementPlaceHolders = []
+    for (let i = 0; i < 20; i++) {
+        elementPlaceHolders.push(<Grid item className={classes.mainItem}><Paper className={classes.paper}>Item {i}</Paper></Grid>)
+    }
+
 
     return (
             <Grid container className={classes.root} justify="center">
@@ -64,31 +72,27 @@ export default function MainGrid() {
 
                 {/*Page-wide Width Adjustment*/}
                 <Grid item container xs={12} sm={10} md={8} lg={7} xl={6} spacing={2} className={classes.body}>
-                    <Grid item xs={12} sm={8}>
-                        <Paper className={classes.paper}>isMiddle: {isMiddle ? "True" : "False"}</Paper>
-                        <Paper className={classes.paper}>
+                    <Grid item container xs={12} sm={8} direction="column">
+                        <Grid item className={classes.mainItem}>
+                            <Hidden smUp>
+                                <ContactGadget/>
+                            </Hidden>
+                        </Grid>
+
+                        <Grid item className={classes.mainItem}>
                             <Introduction/>
-                        </Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
-                        <Paper className={classes.paper}>Main</Paper>
+                        </Grid>
+
+
+                        {
+                            elementPlaceHolders
+                        }
                     </Grid>
                     {/*Right Bar: will show contact info and my selfie!*/}
                     <Grid item container sm={4} xs={12}>
                         {/*Contact Information*/}
                         <Grid item className={classes.fullWidth}>
-                            <ContactBar/>
+                            <ContactGadget/>
                         </Grid>
                     </Grid>
                 </Grid>
