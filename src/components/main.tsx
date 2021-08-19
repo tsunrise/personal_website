@@ -7,7 +7,7 @@ import Heading from "./heading";
 import Introduction from "./introduction";
 import ContactGadget from "./contact/contact";
 import BackgroundInfo from "./background";
-
+import Footprints from "./foorprint";
 
 
 const useStyles = makeStyles((theme: Theme) => createStyles({
@@ -28,7 +28,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
         width: '100%'
     },
     mainItem: {
-        margin: 5
+        marginTop: 5
     }
 }))
 
@@ -64,40 +64,43 @@ export default function MainGrid() {
 
 
     return (
-            <Grid container className={classes.root} justify="center">
+        <Grid container className={classes.root} justify="center">
 
-                <HeadBar isScrollMiddle={isMiddle}/>
+            <HeadBar isScrollMiddle={isMiddle}/>
 
-                {/*Global-wide headings, containing image*/}
-                <Heading isScrollMiddle={isMiddle} disappearLevel={headerBlurLevel}/>
+            {/*Global-wide headings, containing image*/}
+            <Heading isScrollMiddle={isMiddle} disappearLevel={headerBlurLevel}/>
 
-                {/*Page-wide Width Adjustment*/}
-                <Grid item container xs={12} sm={10} md={8} lg={7} xl={6} spacing={2} className={classes.body}>
-                    <Grid item container xs={12} sm={8} direction="column">
-                        <Grid item className={classes.mainItem}>
-                            <Hidden smUp>
-                                <ContactGadget/>
-                            </Hidden>
-                        </Grid>
-
-                        <Grid item className={classes.mainItem}>
-                            <Introduction/>
-                        </Grid>
-                        <Grid item className={classes.mainItem}>
-                            <BackgroundInfo/>
-                        </Grid>
-
-                        {
-                            elementPlaceHolders
-                        }
-                    </Grid>
-                    {/*Right Bar: will show contact info and my selfie!*/}
-                    <Grid item container sm={4} xs={12}>
-                        {/*Contact Information*/}
-                        <Grid item className={classes.fullWidth}>
+            {/*Page-wide Width Adjustment*/}
+            <Grid item container xs={12} sm={10} md={9} lg={7} xl={6} spacing={1} className={classes.body}>
+                <Grid item container xs={12} md={8} direction="column">
+                    <Grid item className={classes.mainItem}>
+                        <Hidden mdUp>
                             <ContactGadget/>
-                        </Grid>
+                        </Hidden>
                     </Grid>
+
+                    <Grid item className={classes.mainItem}>
+                        <Introduction/>
+                    </Grid>
+                    <Grid item className={classes.mainItem}>
+                        <BackgroundInfo/>
+                    </Grid>
+                    <Grid item className={classes.mainItem}>
+                        <Footprints/>
+                    </Grid>
+
+                    {
+                        elementPlaceHolders
+                    }
+                </Grid>
+                    {/*Right Bar: will show contact info and my selfie!*/}
+                <Grid item container md={4} xs={12}>
+                    {/*Contact Information*/}
+                    <Grid item className={classes.fullWidth}>
+                        <ContactGadget/>
+                    </Grid>
+                </Grid>
                 </Grid>
 
             </Grid>
