@@ -11,7 +11,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     introContent: {
         fontStyle: `bold`,
         fontSize: 20,
-        color: blue[700],
+        color: theme.palette.primary.main,
         textAlign: `center`,
         justifyContent: `center`,
         alignItems: `center`,
