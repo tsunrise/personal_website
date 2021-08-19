@@ -3,7 +3,7 @@ import MainGrid from "./components/main";
 import '@fontsource/roboto';
 import {ThemeProvider} from '@material-ui/styles';
 import {createMuiTheme} from "@material-ui/core";
-import {blue, grey} from "@material-ui/core/colors";
+import {grey} from "@material-ui/core/colors";
 
 const theme = createMuiTheme({
     palette: {

@@ -1,4 +1,4 @@
-import {Box, createStyles, Divider, makeStyles, Paper, Theme, Typography} from "@material-ui/core";
+import {Box, createStyles, makeStyles, Paper, Theme, Typography} from "@material-ui/core";
 import Timeline from '@material-ui/lab/Timeline';
 import TimelineItem from '@material-ui/lab/TimelineItem';
 import TimelineSeparator from '@material-ui/lab/TimelineSeparator';
@@ -6,7 +6,7 @@ import TimelineConnector from '@material-ui/lab/TimelineConnector';
 import TimelineContent from '@material-ui/lab/TimelineContent';
 import TimelineOppositeContent from '@material-ui/lab/TimelineOppositeContent';
 import TimelineDot from '@material-ui/lab/TimelineDot';
-import {Computer, Flag, School, Work} from "@material-ui/icons";
+import {Computer, School, Work} from "@material-ui/icons";
 import DividerWithText from "./textDivider";
 
 interface Props {

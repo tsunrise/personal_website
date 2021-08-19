@@ -1,8 +1,4 @@
-
-import {Box, Card, CardContent, createStyles, Grid, makeStyles, Theme, Typography} from "@material-ui/core";
-import {blue} from "@material-ui/core/colors";
-import {useEffect, useState} from "react";
-import TextTransition from "react-text-transition";
+import {createStyles, makeStyles, Theme, Typography} from "@material-ui/core";
 import TextLoop from "@johnsdevelop/react-text-loop";
 
 interface Props {}
