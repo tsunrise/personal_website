@@ -16,7 +16,7 @@ const useStyles = makeStyles((theme) => ({
         [theme.breakpoints.down("xs")]: {
             marginLeft: 5,
             marginRight: 5,
-        }
+        },
     },
     upper: {
         display: "flex",
@@ -27,7 +27,7 @@ const useStyles = makeStyles((theme) => ({
         fontSize: 33
     },
     content: {
-        padding: 24,
+        fontSize: 16,
     },
     actionButton: {
         margin: theme.spacing(1),
@@ -101,7 +101,10 @@ export default function Footprints(prop: Prop) {
                             {cloneElement(item.upperIcon, {className: classes.upperIcon})}
                         </Box>
                     </Box>
-                    <Typography variant="body1">{item.description} </Typography>
+
+                    <Box>
+                        <Typography variant="body2" className={classes.content}>{item.description} </Typography>
+                    </Box>
                 </CardContent>
                 <CardActions>
                     {item.actions.map(action => {
