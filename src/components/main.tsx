@@ -31,7 +31,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
         marginTop: 5
     },
     rightBar: {
-        [theme.breakpoints.down("xs")]: {
+        [theme.breakpoints.down("sm")]: {
             display: 'None'
         }
     },
@@ -75,7 +75,7 @@ export default function MainGrid() {
             <Heading isScrollMiddle={isMiddle} disappearLevel={headerBlurLevel}/>
 
             {/*Page-wide Width Adjustment*/}
-            <Grid item container xs={12} sm={11} md={9} lg={8} xl={6} spacing={1} className={classes.body}>
+            <Grid item container xs={12} sm={11} lg={9} xl={6} spacing={1} className={classes.body}>
                 <Grid item container xs={12} md={9} direction="column">
                     <Grid item className={classes.mainItem}>
                         <Hidden mdUp>
