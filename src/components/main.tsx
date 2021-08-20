@@ -75,8 +75,8 @@ export default function MainGrid() {
             <Heading isScrollMiddle={isMiddle} disappearLevel={headerBlurLevel}/>
 
             {/*Page-wide Width Adjustment*/}
-            <Grid item container xs={12} sm={10} md={9} lg={7} xl={6} spacing={1} className={classes.body}>
-                <Grid item container xs={12} md={8} direction="column">
+            <Grid item container xs={12} sm={11} md={9} lg={8} xl={6} spacing={1} className={classes.body}>
+                <Grid item container xs={12} md={9} direction="column">
                     <Grid item className={classes.mainItem}>
                         <Hidden mdUp>
                             <ContactGadget/>
@@ -101,7 +101,7 @@ export default function MainGrid() {
 
                 </Grid>
                     {/*Right Bar: will show contact info and my selfie!*/}
-                <Grid item container md={4} className={classes.rightBar}>
+                <Grid item container md={3} className={classes.rightBar}>
                     {/*Contact Information*/}
                     <Grid item className={classes.fullWidth}>
                         <ContactGadget/>

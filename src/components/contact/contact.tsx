@@ -37,6 +37,7 @@ const useGadgetStyles = makeStyles((theme: Theme) => createStyles({
 
 function ContactContent(prop: contentProp) {
 
+
     return <Box>
         <Collapse in={prop.status === Status.Github} mountOnEnter unmountOnExit>
             Github Content
