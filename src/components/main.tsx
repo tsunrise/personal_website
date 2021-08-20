@@ -1,7 +1,7 @@
 //! defines the website layout
 
 import React, {useEffect, useState} from "react";
-import {createStyles, Grid, Hidden, makeStyles, Paper, Theme} from "@material-ui/core";
+import {createStyles, Divider, Grid, Hidden, makeStyles, Theme, Typography} from "@material-ui/core";
 import HeadBar from "./headbar";
 import Heading from "./heading";
 import Introduction from "./introduction";
@@ -29,6 +29,15 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     },
     mainItem: {
         marginTop: 5
+    },
+    rightBar: {
+        [theme.breakpoints.down("xs")]: {
+            display: 'None'
+        }
+    },
+    bottomDivider: {
+        marginTop: theme.spacing(3),
+        marginBottom: theme.spacing(2)
     }
 }))
 
@@ -57,12 +66,6 @@ export default function MainGrid() {
         return () => {window.removeEventListener("scroll", handleScroll)}
     })
 
-    let elementPlaceHolders = []
-    for (let i = 0; i < 20; i++) {
-        elementPlaceHolders.push(<Grid item className={classes.mainItem}><Paper className={classes.paper}>Item {i}</Paper></Grid>)
-    }
-
-
     return (
         <Grid container className={classes.root} justify="center">
 
@@ -89,13 +92,16 @@ export default function MainGrid() {
                     <Grid item className={classes.mainItem}>
                         <Footprints/>
                     </Grid>
+                    <Grid item className={classes.mainItem}>
+                        <Divider className={classes.bottomDivider}/>
+                        <Typography variant="body2" color="textSecondary">
+                            © Conghao Shen
+                        </Typography>
+                    </Grid>
 
-                    {
-                        elementPlaceHolders
-                    }
                 </Grid>
                     {/*Right Bar: will show contact info and my selfie!*/}
-                <Grid item container md={4} xs={12}>
+                <Grid item container md={4} className={classes.rightBar}>
                     {/*Contact Information*/}
                     <Grid item className={classes.fullWidth}>
                         <ContactGadget/>
