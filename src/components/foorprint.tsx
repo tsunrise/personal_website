@@ -59,7 +59,7 @@ const items: CardItems[] = [
             " R1CS arithmetic circuit for merkle tree path verification. Support for different two-to-one hashes and leaf hashes.",
         actions: [
             {name: "Repo", icon: <GitHub/>, link: "https://github.com/arkworks-rs/crypto-primitives"},
-            {name: "Crate", icon: <Archive/>, link: "https://github.com/arkworks-rs/crypto-primitives"}
+            {name: "Crate", icon: <Archive/>, link: "https://crates.io/crates/ark-crypto-primitives"}
         ]
     },
     {
