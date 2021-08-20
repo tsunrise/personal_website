@@ -37,20 +37,6 @@ const useGadgetStyles = makeStyles((theme: Theme) => createStyles({
 
 function ContactContent(prop: contentProp) {
 
-    const getContents = () => {
-        switch (prop.status) {
-            case Status.Github:
-                return <Box>Github Content</Box>
-            case Status.Telegram:
-                return <Box>Telegram Content</Box>
-            case Status.Facebook:
-                return <Box>Facebook Content</Box>
-            case Status.Wechat:
-                return <Box>WeChat Content</Box>
-            default:
-                return <Box/>
-        }
-    }
     return <Box>
         <Collapse in={prop.status === Status.Github} mountOnEnter unmountOnExit>
             Github Content
