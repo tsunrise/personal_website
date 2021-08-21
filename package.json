@@ -1,6 +1,6 @@
 {
-  "name": "personal_new",
-  "version": "0.1.0",
+  "name": "tomshen_person_website",
+  "version": "20210820",
   "private": true,
   "dependencies": {
     "@fontsource/roboto": "^4.5.0",

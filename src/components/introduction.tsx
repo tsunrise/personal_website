@@ -11,6 +11,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
         textAlign: `center`,
         justifyContent: `center`,
         alignItems: `center`,
+        maxWidth: `100%`
     },
     fullWidth: {
         width: '100%'
@@ -21,7 +22,7 @@ const roles = [
     "a student",
     "a software engineer",
     "a researcher",
-    "an open source contributors",
+    "an open source committer",
     "an anime lover"
 ]
 
@@ -31,7 +32,7 @@ export default function Introduction(props: Props){
 
 
     return <Typography className={classes.introContent} align={"center"}>
-        I'm <TextLoop children={roles} springConfig={{stiffness: 180, damping: 8}}/>.
+        I'm <TextLoop children={roles} springConfig={{stiffness: 100, damping: 10}}/>.
     </Typography>
 
 }

@@ -9,7 +9,6 @@ import ContactGadget from "./contact/contact";
 import BackgroundInfo from "./background";
 import Footprints from "./foorprint";
 
-
 const useStyles = makeStyles((theme: Theme) => createStyles({
     root: {
         flexGrow: 1
@@ -75,7 +74,7 @@ export default function MainGrid() {
             <Heading isScrollMiddle={isMiddle} disappearLevel={headerBlurLevel}/>
 
             {/*Page-wide Width Adjustment*/}
-            <Grid item container xs={12} sm={11} lg={9} xl={6} spacing={1} className={classes.body}>
+            <Grid item container xs={12} sm={11} lg={9} xl={7} spacing={1} className={classes.body}>
                 <Grid item container xs={12} md={9} direction="column">
                     <Grid item className={classes.mainItem}>
                         <Hidden mdUp>
@@ -94,7 +93,7 @@ export default function MainGrid() {
                     </Grid>
                     <Grid item className={classes.mainItem}>
                         <Divider className={classes.bottomDivider}/>
-                        <Typography variant="body2" color="textSecondary">
+                        <Typography variant="body2" color="textSecondary" style={{marginBottom: 15}}>
                             © Conghao Shen
                         </Typography>
                     </Grid>
