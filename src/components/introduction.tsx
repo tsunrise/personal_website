@@ -1,5 +1,6 @@
 import {createStyles, makeStyles, Theme, Typography} from "@material-ui/core";
 import TextLoop from "@johnsdevelop/react-text-loop";
+import {introductionRoles} from "../data/introduction_roles";
 
 interface Props {}
 
@@ -18,21 +19,12 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
     }
 }))
 
-const roles = [
-    "a student",
-    "a software engineer",
-    "a researcher",
-    "an open source committer",
-    "an anime lover"
-]
-
 export default function Introduction(props: Props){
 
     const classes = useStyles(props)
 
-
     return <Typography className={classes.introContent} align={"center"}>
-        I'm <TextLoop children={roles} springConfig={{stiffness: 100, damping: 10}}/>.
+        I'm <TextLoop children={introductionRoles} springConfig={{stiffness: 100, damping: 10}}/>.
     </Typography>
 
 }
