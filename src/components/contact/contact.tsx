@@ -9,7 +9,7 @@ import {
     Grid,
     IconButton,
     makeStyles,
-    Theme
+    Theme,
 } from "@material-ui/core";
 import React, {cloneElement, useState} from "react";
 import GitHubIcon from '@material-ui/icons/GitHub';
@@ -129,6 +129,7 @@ function ContactContent(prop: contentProp) {
             <img src={wechatQRCode} alt="wechat QR code" style={{width: '100%', maxWidth: '200px'}}/>
         </CardContent>
     </Card>
+    // for email content, display an addition small line on the bottom showing when should use email
     const emailContent = <Card className={classes.cardRoot} elevation={0}>
         <CardHeader
             avatar={
@@ -137,7 +138,7 @@ function ContactContent(prop: contentProp) {
                 </Avatar>
             }
             title={"Tom Shen"}
-            subheader="tomshen <at> berkeley.edu"
+            subheader="me <at> tomshen.io"
         />
     </Card>
 
