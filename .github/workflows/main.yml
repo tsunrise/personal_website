@@ -12,6 +12,7 @@ jobs:
 
       - name: Install and Build 
         run: |
+          npm update
           npm install
           npm run build
 
