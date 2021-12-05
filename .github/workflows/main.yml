@@ -12,8 +12,7 @@ jobs:
 
       - name: Install and Build 
         run: |
-          npm update
-          npm install
+          npm install --legacy-peer-deps
           npm run build
 
       - name: Deploy 
