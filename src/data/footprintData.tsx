@@ -1,4 +1,4 @@
-import {Archive, CallMerge, GitHub, ImportExport, LinearScale} from "@material-ui/icons";
+import {Archive, CallMerge, Class, Description,  GitHub, ImportExport, LinearScale, Link} from "@material-ui/icons";
 
 interface Action {
     name: string,
@@ -39,13 +39,25 @@ const footprintItems: CardItems[] = [
         ]
     },
     {
-        secondary: "work in progress",
+        secondary: "alpha release (breaking change pending, use with caution)",
+        upperIcon: <Link/>,
+        main: "Rust Library for Interactive Oracle Proofs",
+        description: "Implementations of public coin RS-IOP and BCS Transform. " +
+        "Compile any interactive RS-IOP to non-interactive, succinct proof. Convert any public coin IOP-based verifier to R1CS constraints. ",
+        actions: [
+            {name: "Repo", icon: <GitHub/>, link: "https://github.com/arkworks-rs/bcs"},
+            {name: "Tutorial", icon: <Class/>, link: "https://github.com/arkworks-rs/bcs/blob/main/examples/sumcheck/README.md", disabled: false},
+            {name: "Crate", icon: <Archive/>, link: "#", disabled: true}
+        ]
+    },
+    {
+        secondary: "work in progress with two other graduate students",
         upperIcon: <ImportExport/>,
-        main: "Backend communication server for Federated Learning",
-        description: "An asynchronous multi-threaded communication server for federated learning research project." +
-            " Support 16000+ concurrent active connections and high bandwidth. ",
+        main: "Eiffel: Secure Federated Learning System",
+        description: "A new asynchronous multi-threaded communication protocol that has less MPC communication and resists arbitrary gradient poisoning",
         actions: [
             {name: "Repo", icon: <GitHub/>, link: "#", disabled: true},
+            {name: "Paper", icon: <Description/>, link: "#", disabled: true}
         ]
     }
 ]
