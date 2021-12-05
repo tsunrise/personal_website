@@ -10,7 +10,6 @@ import {
     IconButton,
     makeStyles,
     Theme,
-    Typography
 } from "@material-ui/core";
 import React, {cloneElement, useState} from "react";
 import GitHubIcon from '@material-ui/icons/GitHub';
