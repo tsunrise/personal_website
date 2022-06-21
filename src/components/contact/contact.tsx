@@ -71,6 +71,7 @@ const useContentStyles = makeStyles((_theme: Theme) => createStyles({
     }
 }))
 
+const githubAPI = "https://api.github.com/users/tsunrise";
 
 function ContactContent(prop: contentProp) {
     const classes = useContentStyles(prop);
@@ -94,8 +95,14 @@ function ContactContent(prop: contentProp) {
         }, color)
 
     const githubLink = "https://github.com/tsunrise"
+
+    const [githubAvatarLink, setGithubAvatarLink] = useState(githubAvatar)
+    fetch(githubAPI).then(res => res.json()).then(res => {
+        setGithubAvatarLink(res.avatar_url)
+    });
+
     const githubContent = <Card className={classes.cardRoot} elevation={0}>
-        {makeCardHeader(githubAvatar, "Github Avatar", githubLink, "Tom Shen", "@tsunrise")}
+        {makeCardHeader(githubAvatarLink, "Github Avatar", githubLink, "Tom Shen", "@tsunrise")}
         <CardContent className={classes.buttonContainer}>
             {makeButton("View Profile", githubLink, "inherit")}
         </CardContent>
