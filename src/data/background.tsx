@@ -18,13 +18,6 @@ export const entries: BackgroundEntry[] = [
         main: `UC Berkeley`,
     },
     {
-        time: `2020`,
-        icon: <Computer />,
-        icon_color: "primary",
-        header: `Undergraduate Research`,
-        main: `arkworks & RISELab`,
-    },
-    {
         time: `2021`,
         icon: <Work />,
         icon_color: "primary",
@@ -32,11 +25,11 @@ export const entries: BackgroundEntry[] = [
         main: `Arista`,
     },
     {
-        time: `2021`,
-        icon: <Code />,
+        time: `2020`,
+        icon: <Computer />,
         icon_color: "primary",
-        header: `Independent Open Source Contributor`,
-        main: `Manta Network`,
+        header: `Undergraduate Research`,
+        main: `arkworks & RISELab/SkyLab`,
     },
     {
         time: `2022`,

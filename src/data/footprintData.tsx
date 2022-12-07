@@ -17,6 +17,16 @@ interface CardItems {
 
 const footprintItems: CardItems[] = [
     {
+        secondary: "In Proceedings of IEEE S&P 2023",
+        upperIcon: <ImportExport/>,
+        main: "ELSA",
+        description: "Secure Multi-Party Aggregation for Federated Learning with Malicious Actor",
+        actions: [
+            {name: "Repo", icon: <GitHub/>, link: "https://github.com/ucbsky/elsa", disabled: false},
+            {name: "Paper", icon: <Description/>, link: "#", disabled: true}
+        ]
+    },
+    {
         secondary: "co-authored with arkworks open-source contributors",
         upperIcon: <CallMerge/>,
         main: "An R1CS Friendly Merkle Tree Implementation",
@@ -38,28 +48,6 @@ const footprintItems: CardItems[] = [
             {name: "Crate", icon: <Archive/>, link: "#", disabled: true}
         ]
     },
-    {
-        secondary: "alpha release (breaking change pending, use with caution)",
-        upperIcon: <Link/>,
-        main: "Rust Library for Interactive Oracle Proofs",
-        description: "Implementations of public coin RS-IOP and BCS Transform. " +
-        "Compile any interactive RS-IOP to non-interactive, succinct proof. Convert any public coin IOP-based verifier to R1CS constraints. ",
-        actions: [
-            {name: "Repo", icon: <GitHub/>, link: "https://github.com/arkworks-rs/bcs"},
-            {name: "Tutorial", icon: <Class/>, link: "https://github.com/arkworks-rs/bcs/blob/main/examples/sumcheck/README.md", disabled: false},
-            {name: "Crate", icon: <Archive/>, link: "#", disabled: true}
-        ]
-    },
-    {
-        secondary: "work in progress with two other graduate students",
-        upperIcon: <ImportExport/>,
-        main: "Eiffel: Secure Federated Learning System",
-        description: "A new asynchronous multi-threaded communication protocol that has less MPC communication and resists arbitrary gradient poisoning",
-        actions: [
-            {name: "Repo", icon: <GitHub/>, link: "#", disabled: true},
-            {name: "Paper", icon: <Description/>, link: "#", disabled: true}
-        ]
-    }
 ]
 
 export {footprintItems};
