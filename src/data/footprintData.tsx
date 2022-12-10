@@ -23,7 +23,7 @@ const footprintItems: CardItems[] = [
         description: "Secure Multi-Party Aggregation for Federated Learning with Malicious Actor",
         actions: [
             {name: "Repo", icon: <GitHub/>, link: "https://github.com/ucbsky/elsa", disabled: false},
-            {name: "Paper", icon: <Description/>, link: "#", disabled: true}
+            {name: "Eprint", icon: <Description/>, link: "https://eprint.iacr.org/2022/1695", disabled: false}
         ]
     },
     {
