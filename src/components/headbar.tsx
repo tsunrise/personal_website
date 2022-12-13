@@ -12,6 +12,7 @@ const useStyles = makeStyles((theme: Theme) => createStyles({
             props.isScrollMiddle ? fade('#ffffff', 0.7) : "none",
         transition: theme.transitions.create(['background']),
         backdropFilter: (props) => props.isScrollMiddle ? "blur(5px)" : "none",
+        webkitBackdropFilter: (props) => props.isScrollMiddle ? "blur(5px)" : "none",
 
     },
     title: {
