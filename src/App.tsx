@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import MainGrid from "./main";
 import '@fontsource/roboto';
+import '@fontsource/source-sans-pro';
 import { ThemeProvider } from '@mui/material/styles';
 import { createTheme } from '@mui/material/styles';
 import { grey } from "@mui/material/colors";
