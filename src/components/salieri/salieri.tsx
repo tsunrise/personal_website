@@ -1,8 +1,9 @@
 import { Box, TextField, Typography, Button, Collapse, Grow, Grid, LinearProgress, Alert } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
+import { DummySalieriBackend, useSalieri } from "./service";
 
 const SpeakerTypography = (prop: { speaker: string }) => {
     return <Typography variant="h6" sx={{
@@ -40,6 +41,7 @@ const InputBox = (props: {
     suggested_questions: string[],
     submit: () => void,
     max_length: number,
+    disabled?: boolean
 }) => {
 
     const inputIsEmpty = props.question === ""
@@ -66,6 +68,7 @@ const InputBox = (props: {
                     props.setQuestion(event.target.value)
                 }}
                 error={props.question.length > props.max_length}
+                disabled={props.disabled}
             />
             <Collapse in={displayProgress}>
                 <Grow in={displayProgress} timeout={400}>
@@ -151,9 +154,6 @@ const InputBox = (props: {
         </Collapse>
     </Box>
 }
-
-const welcome_text = `Hi, I'm Tom's friend Salieri! Whether you're curious about Tom's work, hobbies, or favorites, I'm here to instantly assist you—anytime.`
-
 // const placement_text = `The meaning of life is a philosophical and existential question that has been contemplated by humans for millennia. It involves seeking to understand the significance, purpose, or value of life and existence. Many people have approached the question from religious, philosophical, scientific, and existential perspectives.`
 
 
@@ -161,17 +161,23 @@ const welcome_text = `Hi, I'm Tom's friend Salieri! Whether you're curious about
 export const Salieri = () => {
     // initialize Salieri Service
 
-
     const [userQuestion, setUserQuestion] = useState("")
+    const backend = useMemo(() => DummySalieriBackend, [])
+    const service = useSalieri(backend)
+
+    const initializing = service.hints == null
+    const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
+    const welcome_text = (service.hints == null) ? "Salieri is Loading..." : service.hints.welcome
 
     return <Box>
         <Message speaker="Salieri" text={welcome_text} />
         <InputBox
             question={userQuestion}
             setQuestion={setUserQuestion}
-            suggested_questions={["Hello this is question 1", "Hello this is question 2"]}
+            suggested_questions={suggested_questions}
             submit={() => { console.log("submit") }}
             max_length={300}
+            disabled={initializing}
         />
         {/* <Message speaker="you" text="What's the meaning of life?" />
         <Message speaker="Salieri" text={placement_text} /> */}
