@@ -152,13 +152,15 @@ const InputBox = (props: {
     </Box>
 }
 
-const welcome_text = `Hi, I'm Tom's friend Salieri! Whether you're curious about Tom's work, hobbies, or favorites, I'm here to instantly assist you—anytime. Just type your questions and let's chat!`
+const welcome_text = `Hi, I'm Tom's friend Salieri! Whether you're curious about Tom's work, hobbies, or favorites, I'm here to instantly assist you—anytime.`
 
 // const placement_text = `The meaning of life is a philosophical and existential question that has been contemplated by humans for millennia. It involves seeking to understand the significance, purpose, or value of life and existence. Many people have approached the question from religious, philosophical, scientific, and existential perspectives.`
 
 
 
 export const Salieri = () => {
+    // initialize Salieri Service
+
 
     const [userQuestion, setUserQuestion] = useState("")
 
