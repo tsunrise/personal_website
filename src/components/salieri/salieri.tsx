@@ -1,9 +1,10 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, Grid, LinearProgress, Alert } from "@mui/material"
+import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, Alert } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
 import { DummySalieriBackend, useSalieri } from "./service";
+import { styled } from "@mui/system";
 
 const SpeakerTypography = (prop: { speaker: string }) => {
     return <Typography variant="h6" sx={{
@@ -23,6 +24,12 @@ const wrap = {
     marginBottom: 1,
 }
 
+const WrapAlert = styled(Alert)(({ theme }) => ({
+    marginLeft: 2,
+    marginRight: 2,
+    marginBottom: 1,
+}))
+
 const Message = (prop: { speaker: string, text: string }) => {
 
     return <Box>
@@ -31,7 +38,9 @@ const Message = (prop: { speaker: string, text: string }) => {
             fontWeight: 400,
             textTransform: "none",
             ...wrap,
-        }}>{prop.text}</Typography>
+        }}
+            whiteSpace="pre-wrap"
+        >{prop.text}</Typography>
     </Box>
 }
 
@@ -84,13 +93,10 @@ const InputBox = (props: {
             {/* Reset and Submit button. Reset button is an icon, and submit button is text button*/}
             <Collapse in={lengthExceeded}>
                 <Grow in={lengthExceeded} timeout={400}>
-                    <Alert severity="error" sx={{
-                        marginLeft: 2,
-                        marginRight: 2,
-                        marginBottom: 1,
+                    <WrapAlert severity="error" sx={{
                     }}>
                         Your question is too long. ({props.question.length}/{props.max_length})
-                    </Alert>
+                    </WrapAlert>
                 </Grow>
             </Collapse>
 
@@ -154,8 +160,14 @@ const InputBox = (props: {
         </Collapse>
     </Box>
 }
-// const placement_text = `The meaning of life is a philosophical and existential question that has been contemplated by humans for millennia. It involves seeking to understand the significance, purpose, or value of life and existence. Many people have approached the question from religious, philosophical, scientific, and existential perspectives.`
 
+const ResponseBox = (props: { answering: boolean, answer: string, warning?: string, onStartOver: () => void }) => {
+    return <Box>
+        <Message speaker={
+            props.answering ? "Salieri is answering" : "Salieri"
+        } text={props.answer} />
+    </Box>
+}
 
 
 export const Salieri = () => {
@@ -165,21 +177,72 @@ export const Salieri = () => {
     const backend = useMemo(() => DummySalieriBackend, [])
     const service = useSalieri(backend)
 
-    const initializing = service.hints == null
     const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
     const welcome_text = (service.hints == null) ? "Salieri is Loading..." : service.hints.welcome
 
+    const reset = useCallback(() => {
+        setUserQuestion("")
+        service.reset()
+    }, [service])
+
     return <Box>
         <Message speaker="Salieri" text={welcome_text} />
-        <InputBox
-            question={userQuestion}
-            setQuestion={setUserQuestion}
-            suggested_questions={suggested_questions}
-            submit={() => { console.log("submit") }}
-            max_length={300}
-            disabled={initializing}
-        />
-        {/* <Message speaker="you" text="What's the meaning of life?" />
-        <Message speaker="Salieri" text={placement_text} /> */}
+        {
+            (service.state === "hint_ready") &&
+            <InputBox
+                question={userQuestion}
+                setQuestion={setUserQuestion}
+                suggested_questions={suggested_questions}
+                submit={() => { service.ask(userQuestion) }}
+                max_length={300} // TODO: enforce max length in backend
+            />
+        }
+        {
+            // User Question
+            (service.state === "answering" || service.state === "done" || service.state === "error") &&
+            <Message speaker="you" text={userQuestion} />
+        }
+        {
+            // Salieri Response
+            (service.state === "answering" || service.state === "done" || service.state === "error") && service.answer != null &&
+            <ResponseBox answering={service.state === "answering"} answer={service.answer} onStartOver={() => { reset() }} />
+        }
+        {
+            // Salieri Warning
+            (service.warning != null) &&
+            <WrapAlert severity="warning">
+                {service.warning}
+            </WrapAlert>
+        }
+        {
+            // Salieri Error
+            (service.error != null) &&
+            <WrapAlert severity="error">
+                {service.error}
+            </WrapAlert>
+
+        }
+        {
+            // Start Over
+            (service.state === "answering" || service.state === "done" || service.state === "error") &&
+            <Box sx={{
+                display: "flex",
+                justifyContent: "flex-end",
+                ...wrap,
+            }}
+            >
+                <Grow in={service.state !== "answering"} timeout={400}>
+                    <Button variant="outlined" startIcon={<ReplayIcon />} color="secondary"
+                        onClick={() => {
+                            reset()
+                        }}
+                    >
+                        Start Over
+                    </Button>
+                </Grow>
+            </Box>
+        }
+
+
     </Box>
 }
