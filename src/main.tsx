@@ -1,8 +1,8 @@
 //! defines the website layout
 
 import { useEffect, useState } from "react";
-import { Box, Divider, Grid, Hidden, Typography } from "@mui/material";
-import HeadBar from "./components/headbar";
+import { AppBar, Divider, Grid, Hidden, Toolbar, Typography } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import Heading from "./components/heading";
 import ContactGadget from "./components/contact/contact";
 import { styled } from "@mui/system";
@@ -20,12 +20,10 @@ const MainItemGrid = styled(Grid)(({ theme }) => ({
 
 export default function MainGrid() {
     const [isMiddle, setIsMiddle] = useState(false);
-    // handles the blur level of the heading
-    const [headerBlurLevel, setHeaderBlurLevel] = useState(0);
 
     const handleScroll = () => {
         const threshold = 20;
-        setHeaderBlurLevel(Math.min((window.scrollY - threshold) / 7, 10) / 10)
+
         if (window.scrollY > threshold) {
             setIsMiddle(true)
         } else {
@@ -36,15 +34,29 @@ export default function MainGrid() {
     useEffect(() => {
         window.addEventListener("scroll", handleScroll);
         return () => { window.removeEventListener("scroll", handleScroll) }
-    })
+    }, [])
 
     return (
         <Grid container justifyContent="center" sx={{ flexGrow: 1 }}>
 
-            <HeadBar isScrollMiddle={isMiddle} />
+            <AppBar position="fixed" sx={{
+                boxShadow: 3,
+                background: alpha('#ffffff', 0.7),
+                backdropFilter: "blur(5px)",
+                webkitBackdropFilter: "blur(5px)",
+                opacity: isMiddle ? 1 : 0,
+                visibility: isMiddle ? "visible" : "hidden",
+                transition: "opacity 0.1s, visibility 0.1s",
+            }}>
+                <Toolbar>
+                    <Typography variant="h6" sx={{
+                        color: "black"
+                    }}>Tom Shen</Typography>
+                </Toolbar>
+            </AppBar>
 
             {/*Global-wide headings, containing image*/}
-            <Heading isScrollMiddle={isMiddle} disappearLevel={headerBlurLevel} />
+            <Heading />
 
             {/*Page-wide Width Adjustment*/}
             <BodyGrid item container xs={12} sm={11} lg={8} xl={6} spacing={1}>

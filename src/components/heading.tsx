@@ -1,7 +1,7 @@
 import { Box, Grid, Typography } from "@mui/material";
 import backgroundImg from "../images/bkg.jpg";
 
-export default function Heading(prop: { isScrollMiddle: boolean, disappearLevel: number }) {
+export default function Heading() {
 
     return <Grid item container xs={12} sx={{
         backgroundImage: `linear-gradient(to bottom, rgba(255,255,255,0) 20%,
@@ -9,7 +9,6 @@ export default function Heading(prop: { isScrollMiddle: boolean, disappearLevel:
         backgroundPosition: 'center',
         backgroundSize: 'cover',
         height: 300,
-        filter: prop.isScrollMiddle ? `blur(${prop.disappearLevel * 6}px)` : "none",
         transition: 'filter',
         transitionDuration: '100ms',
     }} direction="column" alignItems={"center"} justifyContent={"center"}>
