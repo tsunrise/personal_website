@@ -49,6 +49,7 @@ const Message = (prop: { speaker: string, text: string }) => {
         <Typography variant="body1" sx={{
             fontWeight: 400,
             textTransform: "none",
+            wordBreak: "break-word",
             ...wrap,
         }}
             whiteSpace="pre-wrap"
