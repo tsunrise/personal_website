@@ -1,4 +1,4 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, Alert } from "@mui/material"
+import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, Alert, Link } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
@@ -160,6 +160,18 @@ const InputBox = (props: {
                         onError={() => { props.set_captcha_token(null); setCaptchaError(true) }}
                         onExpire={() => { props.set_captcha_token(null); setCaptchaError(false) }}
                         ref={captcha_ref}></Turnstile>
+                    <Link sx={{
+                        fontSize: 12,
+                        color: grey[500]
+                    }}
+                        component="button"
+                        variant="body2"
+                        onClick={() => {
+                            captcha_ref.current?.reset();
+                        }}
+                    >
+                        Cannot see the captcha?
+                    </Link>
                 </Box>
             </Collapse>
 
@@ -278,6 +290,7 @@ export const Salieri = () => {
                 submit={() => { if (captchaToken != null) { service.ask(userQuestion, captchaToken) } }}
                 max_length={300} // TODO: enforce max length in backend
             />
+
         }
         {
             // User Question
