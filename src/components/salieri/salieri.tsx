@@ -1,10 +1,20 @@
 import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, Alert } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
 import { DummySalieriBackend, useSalieri } from "./service";
 import { styled } from "@mui/system";
+import { Turnstile, TurnstileInstance } from "@marsidev/react-turnstile";
+
+const cf_turnstile_keys = {
+    "always_passes_visible": "1x00000000000000000000AA",
+    "always_blocks_visible": "2x00000000000000000000AB",
+    "always_passes_invisible": "1x00000000000000000000BB",
+    "always_blocks_invisible": "2x00000000000000000000BB",
+    "force_interactive_challenge": "3x00000000000000000000FF"
+}
+
 
 const SpeakerTypography = (prop: { speaker: string }) => {
     return <Typography variant="h6" sx={{
@@ -48,6 +58,8 @@ const InputBox = (props: {
     question: string,
     setQuestion: (question: string) => void,
     suggested_questions: string[],
+    captcha_token: string | null,
+    set_captcha_token: (token: string | null) => void,
     submit: () => void,
     max_length: number,
     disabled?: boolean
@@ -57,6 +69,24 @@ const InputBox = (props: {
     const lengthRatio = Math.min(props.question.length / props.max_length, 1)
     const lengthExceeded = props.question.length > props.max_length
     const displayProgress = lengthRatio > 0.8 && !lengthExceeded;
+
+    const captcha_ref = useRef<TurnstileInstance>();
+    const getTokens = useCallback(() => {
+        if (captcha_ref.current) {
+            const resp = captcha_ref.current.getResponse();
+            if (resp) {
+                return resp;
+            }
+        }
+        return null;
+    }, [captcha_ref])
+
+    useEffect(() => {
+        if (props.captcha_token === null) {
+            captcha_ref.current?.reset();
+        }
+    }, [props.captcha_token])
+
 
     return <Box>
         <SpeakerTypography speaker="you" />
@@ -89,6 +119,23 @@ const InputBox = (props: {
                 </Grow>
             </Collapse>
         </Box>
+        {/* Captcha */}
+        <Collapse in={(props.captcha_token === null) && (!inputIsEmpty)}>
+            <Box sx={{
+                ...wrap,
+            }}>
+                <Turnstile siteKey={cf_turnstile_keys.always_passes_visible}
+                    options={{
+                        theme: "light",
+                        appearance: "always"
+                    }}
+                    onSuccess={() => { props.set_captcha_token(getTokens()) }}
+                    onError={() => { props.set_captcha_token(null) }}
+                    onExpire={() => { props.set_captcha_token(null) }}
+                    ref={captcha_ref}></Turnstile>
+            </Box>
+        </Collapse>
+
         <Collapse in={!inputIsEmpty}>
             {/* Reset and Submit button. Reset button is an icon, and submit button is text button*/}
             <Collapse in={lengthExceeded}>
@@ -122,7 +169,7 @@ const InputBox = (props: {
                         onClick={() => {
                             props.submit()
                         }}
-                        disabled={lengthExceeded}
+                        disabled={lengthExceeded || props.captcha_token === null}
                     >
                         Send
                     </Button>
@@ -170,6 +217,8 @@ const ResponseBox = (props: { answering: boolean, answer: string, warning?: stri
 }
 
 
+
+
 export const Salieri = () => {
     // initialize Salieri Service
 
@@ -177,11 +226,15 @@ export const Salieri = () => {
     const backend = useMemo(() => DummySalieriBackend, [])
     const service = useSalieri(backend)
 
+    // captcha
+    const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
     const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
     const welcome_text = (service.hints == null) ? "Salieri is Loading..." : service.hints.welcome
 
     const reset = useCallback(() => {
-        setUserQuestion("")
+        setUserQuestion("");
+        setCaptchaToken(null);
         service.reset()
     }, [service])
 
@@ -192,8 +245,10 @@ export const Salieri = () => {
             <InputBox
                 question={userQuestion}
                 setQuestion={setUserQuestion}
+                captcha_token={captchaToken}
+                set_captcha_token={setCaptchaToken}
                 suggested_questions={suggested_questions}
-                submit={() => { service.ask(userQuestion) }}
+                submit={() => { if (captchaToken != null) { service.ask(userQuestion, captchaToken) } }}
                 max_length={300} // TODO: enforce max length in backend
             />
         }

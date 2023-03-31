@@ -24,7 +24,7 @@ interface StreamItemStop {
 // TODO: put me in useEffect(..., []) instead of the component function to avoid re-creating the service on every render
 export interface SalieriBackend {
     getHints(): Promise<Hints>;
-    subscribeToAnswer(question: string, onUpdate: (item: StreamItemDelta | StreamItemStop) => void): void;
+    subscribeToAnswer(question: string, token: string, onUpdate: (item: StreamItemDelta | StreamItemStop) => void): void;
 }
 
 // dummy service
@@ -38,9 +38,9 @@ export const DummySalieriBackend: SalieriBackend = {
         };
     },
 
-    subscribeToAnswer: (question, onUpdate) => {
+    subscribeToAnswer: (question, token, onUpdate) => {
         // stream the answer word by word, asynchronously
-        const deltas = ["You ", "asked: \"", question, "\" and", " the", " answer", " is:", " 42."];
+        const deltas = ["You ", "asked: \"", question, "\" and", " the", " answer", " is:", " 42.", "Your", " token is: \n\n ", token, "."];
         if (question === "hhh") {
             throw new Error("test.")
         }
@@ -96,7 +96,7 @@ export const useSalieri = (backend: SalieriBackend) => {
         getHints();
     }, [getHints]);
 
-    const ask = (question: string) => {
+    const ask = (question: string, token: string) => {
         if (state === "answering") {
             console.error("Asked while answering. Ignore.");
             return;
@@ -104,7 +104,7 @@ export const useSalieri = (backend: SalieriBackend) => {
         setAnswer("");
         setState("answering");
         try {
-            backend.subscribeToAnswer(question, (item) => {
+            backend.subscribeToAnswer(question, token, (item) => {
                 if (item.type === 'delta') {
                     setAnswer((answer) => answer + item.delta);
                 } else {
