@@ -3,6 +3,7 @@ import { blue, grey } from "@mui/material/colors"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
+import BoltIcon from '@mui/icons-material/Bolt';
 import { DummySalieriBackend, useSalieri } from "./service";
 import { styled } from "@mui/system";
 import { Turnstile, TurnstileInstance } from "@marsidev/react-turnstile";
@@ -12,7 +13,8 @@ const cf_turnstile_keys = {
     "always_blocks_visible": "2x00000000000000000000AB",
     "always_passes_invisible": "1x00000000000000000000BB",
     "always_blocks_invisible": "2x00000000000000000000BB",
-    "force_interactive_challenge": "3x00000000000000000000FF"
+    "force_interactive_challenge": "3x00000000000000000000FF",
+    "tomshen_io": "0x4AAAAAAADKETLTiaTObZqk"
 }
 
 
@@ -35,9 +37,9 @@ const wrap = {
 }
 
 const WrapAlert = styled(Alert)(({ theme }) => ({
-    marginLeft: 2,
-    marginRight: 2,
-    marginBottom: 1,
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(1),
 }))
 
 const Message = (prop: { speaker: string, text: string }) => {
@@ -69,6 +71,8 @@ const InputBox = (props: {
     const lengthRatio = Math.min(props.question.length / props.max_length, 1)
     const lengthExceeded = props.question.length > props.max_length
     const displayProgress = lengthRatio > 0.8 && !lengthExceeded;
+
+    const [captchaError, setCaptchaError] = useState(false);
 
     const captcha_ref = useRef<TurnstileInstance>();
     const getTokens = useCallback(() => {
@@ -119,40 +123,50 @@ const InputBox = (props: {
                 </Grow>
             </Collapse>
         </Box>
-        {/* Captcha */}
-        <Collapse in={(props.captcha_token === null) && (!inputIsEmpty)}>
-            <Box sx={{
-                ...wrap,
-            }}>
-                <Turnstile siteKey={cf_turnstile_keys.always_passes_visible}
-                    options={{
-                        theme: "light",
-                        appearance: "always"
-                    }}
-                    onSuccess={() => { props.set_captcha_token(getTokens()) }}
-                    onError={() => { props.set_captcha_token(null) }}
-                    onExpire={() => { props.set_captcha_token(null) }}
-                    ref={captcha_ref}></Turnstile>
-            </Box>
-        </Collapse>
+
 
         <Collapse in={!inputIsEmpty}>
-            {/* Reset and Submit button. Reset button is an icon, and submit button is text button*/}
+            {/* Alerts */}
             <Collapse in={lengthExceeded}>
                 <Grow in={lengthExceeded} timeout={400}>
-                    <WrapAlert severity="error" sx={{
-                    }}>
+                    <WrapAlert severity="error" >
                         Your question is too long. ({props.question.length}/{props.max_length})
                     </WrapAlert>
                 </Grow>
+            </Collapse>
+
+            <Collapse in={captchaError}>
+                <Grow in={captchaError} timeout={400}>
+
+                    <WrapAlert severity="error">
+                        Salieri can only answer questions from humans, and is unable to verify that you are one.
+                    </WrapAlert>
+
+                </Grow>
+            </Collapse>
+
+            {/* Captchas */}
+            <Collapse in={(props.captcha_token === null) && (!captchaError)}>
+                <Box sx={{
+                    ...wrap,
+                }}>
+                    <Turnstile siteKey={cf_turnstile_keys.tomshen_io}
+                        options={{
+                            theme: "light",
+                            appearance: "always"
+                        }}
+                        onSuccess={() => { props.set_captcha_token(getTokens()); setCaptchaError(false) }}
+                        onError={() => { props.set_captcha_token(null); setCaptchaError(true) }}
+                        onExpire={() => { props.set_captcha_token(null); setCaptchaError(false) }}
+                        ref={captcha_ref}></Turnstile>
+                </Box>
             </Collapse>
 
             <Box sx={{
                 display: "flex",
                 justifyContent: "flex-end",
                 ...wrap,
-            }}
-            >
+            }}>
                 <Grow in={!inputIsEmpty} timeout={400}>
                     <Button variant="outlined" startIcon={<ReplayIcon />} color="secondary"
                         onClick={() => {
@@ -162,7 +176,7 @@ const InputBox = (props: {
                         Start Over
                     </Button>
                 </Grow>
-                <Grow in={!inputIsEmpty} timeout={800}>
+                <Grow in={(!inputIsEmpty)} timeout={800}>
                     <Button variant="contained" endIcon={<SendIcon />} color="primary" sx={{
                         marginLeft: 1,
                     }}
@@ -174,6 +188,18 @@ const InputBox = (props: {
                         Send
                     </Button>
                 </Grow>
+                {captchaError &&
+                    <Button variant="contained" endIcon={<BoltIcon />} color="error" sx={{
+                        marginLeft: 1,
+                    }}
+                        onClick={() => {
+                            setCaptchaError(false);
+                            captcha_ref.current?.reset();
+                        }}
+                    >
+                        retry
+                    </Button>
+                }
             </Box>
         </Collapse>
         <Collapse in={inputIsEmpty}>
