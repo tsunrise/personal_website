@@ -184,16 +184,24 @@ export default function ContactGadget(prop: Props) {
         <Grid item>
             <MyIconButton activeStatus={contactState === Status.Github} activeColor={grey[900]} onClick={() => {
                 toggleContactState(Status.Github)
-            }}> <GitHubIcon /> </MyIconButton>
+            }}
+                aria-label="github"
+            > <GitHubIcon /> </MyIconButton>
             <MyIconButton activeStatus={contactState === Status.Telegram} activeColor={blue[300]} onClick={() => {
                 toggleContactState(Status.Telegram)
-            }}> <TelegramIcon /> </MyIconButton>
+            }}
+                aria-label="telegram"
+            > <TelegramIcon /> </MyIconButton>
             <MyIconButton activeStatus={contactState === Status.Facebook} activeColor={blue[900]} onClick={() => {
                 toggleContactState(Status.Facebook)
-            }}> <FacebookIcon /> </MyIconButton>
+            }}
+                aria-label="facebook"
+            > <FacebookIcon /> </MyIconButton>
             <MyIconButton activeStatus={contactState === Status.Wechat} activeColor={green[800]} onClick={() => {
                 toggleContactState(Status.Wechat)
-            }}> <WechatIcon /> </MyIconButton>
+            }}
+                aria-label="wechat"
+            > <WechatIcon /> </MyIconButton>
         </Grid>
 
         <Grid item container direction="row">

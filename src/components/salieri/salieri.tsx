@@ -113,6 +113,7 @@ const InputBox = (props: {
                 }}
                 error={props.question.length > props.max_length}
                 disabled={props.disabled}
+                aria-label="Message Input Box to Salieri"
             />
             <Collapse in={displayProgress}>
                 <Grow in={displayProgress} timeout={400}>
