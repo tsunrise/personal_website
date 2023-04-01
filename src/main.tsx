@@ -1,12 +1,13 @@
 //! defines the website layout
 
 import { useEffect, useState } from "react";
-import { AppBar, Divider, Grid, Hidden, Toolbar, Typography } from "@mui/material";
+import { AppBar, Divider, Grid, Hidden, Link, Toolbar, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import Heading from "./components/heading";
 import ContactGadget from "./components/contact/contact";
 import { styled } from "@mui/system";
 import { Salieri } from "./components/salieri/salieri";
+import { PrivacyDialog } from "./components/privacy";
 
 const BodyGrid = styled(Grid)(({ theme }) => ({
     [theme.breakpoints.up("sm")]: {
@@ -59,7 +60,7 @@ export default function MainGrid() {
             <Heading />
 
             {/*Page-wide Width Adjustment*/}
-            <BodyGrid item container xs={12} sm={11} lg={8} xl={6} spacing={1}>
+            <BodyGrid item container xs={12} sm={11} lg={8} xl={6.5} spacing={1}>
                 <Grid item container xs={12} md={9} direction="column" sx={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -92,7 +93,7 @@ export default function MainGrid() {
                         <Typography variant="body2" color="textSecondary" style={{ marginBottom: 15 }}>
                             Salieri is a language model, and may display inaccurate or offensive information that doesn't represent Tom's views.
                             <br />
-                            © Conghao Shen
+                            © Conghao Shen | <PrivacyDialog /> | <Link href="https://github.com/tsunrise/personal_website" target="_blank" rel="noreferrer" variant="body2" color="secondary">Source</Link>
                         </Typography>
                     </MainItemGrid>
 
