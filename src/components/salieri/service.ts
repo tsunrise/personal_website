@@ -147,13 +147,11 @@ export const SalieriAPIBackend: SalieriBackend = {
                     ws.close();
             }
         };
-        // ws.onerror = (event) => {
-        //     onError(new Error("WebSocket error: " + event));
-        // }
+        ws.onerror = (event) => {
+            onError(new Error("WebSocket error: " + event));
+        }
         ws.onclose = (event) => {
-            if (event.code !== 1000) {
-                onError(new Error("WebSocket closed: " + event.reason + " (" + event.code + ")"));
-            }
+            console.log("WebSocket closed: " + event.code);
         }
 
     }

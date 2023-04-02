@@ -60,7 +60,9 @@ export default function MainGrid() {
             <Heading />
 
             {/*Page-wide Width Adjustment*/}
-            <BodyGrid item container xs={12} sm={11} lg={8} xl={6.5} spacing={1}>
+            <BodyGrid item container xs={12} sm={11} spacing={1} sx={{
+                maxWidth: { xs: '100%', sm: '100%', md: 1000, lg: 1000, xl: 1000 },
+            }}>
                 <Grid item container xs={12} md={9} direction="column" sx={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -91,7 +93,7 @@ export default function MainGrid() {
                             marginBottom: 2
                         }} />
                         <Typography variant="body2" color="textSecondary" style={{ marginBottom: 15 }}>
-                            Salieri is a language model, and may display inaccurate or offensive information that doesn't represent Tom's views.
+                            The Salieri System is a language model, and may display inaccurate or offensive information that doesn't represent the real Tom's views.
                             <br />
                             © Conghao Shen | <PrivacyDialog /> | <Link href="https://github.com/tsunrise/personal_website" target="_blank" rel="noreferrer" variant="body2" color="secondary">Source</Link>
                         </Typography>

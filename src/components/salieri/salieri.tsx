@@ -1,12 +1,15 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link } from "@mui/material"
+import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, Grid, Divider, List, ListItemIcon, ListItem, ListItemText, Tooltip, IconButton } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
 import BoltIcon from '@mui/icons-material/Bolt';
-import { DummySalieriBackend, SalieriAPIBackend, useSalieri } from "./service";
+import { SalieriAPIBackend, useSalieri } from "./service";
+import AttributionIcon from '@mui/icons-material/Attribution';
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import { styled } from "@mui/system";
 import { Turnstile, TurnstileInstance } from "@marsidev/react-turnstile";
+import "./loading.css"
 
 const cf_turnstile_keys = {
     "always_passes_visible": "1x00000000000000000000AA",
@@ -250,13 +253,48 @@ const InputBox = (props: {
 
 const ResponseBox = (props: { answering: boolean, answer: string, warning?: string, onStartOver: () => void }) => {
     return <Box>
-        <Message speaker={
-            props.answering ? "Salieri is answering" : "Salieri"
-        } text={props.answer} />
+        <Message speaker='"Tom"' text={props.answer} />
+        {/* Make middle */}
+        <Box sx={{
+            display: props.answering ? "flex" : "none",
+            justifyContent: "center",
+            alignItems: "center",
+            marginTop: 1,
+            marginBottom: 1,
+        }}>
+            <div className="dot-flashing"></div>
+        </Box>
+
     </Box>
 }
 
-
+const IntroListItem = (props: { icon: React.ReactElement, text: string }) => {
+    return <ListItem sx={{
+        padding: 0,
+        justifyContent: {
+            xs: "center",
+        }
+    }}>
+        <ListItemIcon sx={{
+            minWidth: 0,
+            marginRight: 1,
+        }}>
+            {props.icon}
+        </ListItemIcon>
+        <ListItemText sx={{
+            fontSize: {
+                xs: 14,
+                sm: 16,
+            },
+            fontWeight: 400,
+            fontFamily: "Source Sans Pro",
+            color: grey[800],
+            marginRight: 1,
+        }}>
+            {props.text}
+        </ListItemText>
+    </ListItem>
+}
 
 
 export const Salieri = () => {
@@ -288,9 +326,63 @@ export const Salieri = () => {
             </Box>
         }
         {
+            // welcome
             (service.state === "hint_ready" || service.state === "answering" || service.state === "done" || service.state === "error_loading_answer")
             &&
-            <Message speaker="Salieri" text={welcome_text} />
+            <>
+                <Box>
+                    <Grid container spacing={2}>
+                        <Grid item xs={4} md={6}>
+                            {/* Show a text logo: Salieri System, with foot text aligned to the right: by Tom Shen */}
+                            <Typography variant="h4" sx={{
+                                fontWeight: 700,
+                                fontFamily: "Source Sans Pro",
+                                color: blue[700],
+                                textAlign: "right",
+                                fontSize: {
+                                    xs: 16,
+                                    sm: 24,
+                                    md: 32,
+                                }
+                            }}>
+                                Salieri System
+                            </Typography>
+                            <Typography variant="body2" sx={{
+                                fontWeight: 400,
+                                fontFamily: "Source Sans Pro",
+                                color: grey[700],
+                                textAlign: "right",
+                                fontSize: {
+                                    xs: 12,
+                                    sm: 16,
+                                }
+                            }}>
+                                by Tom Shen
+                            </Typography>
+                        </Grid>
+
+                        <Grid item xs={8} md={6} sx={{
+                        }}>
+                            <List dense sx={{
+                                marginTop: 0,
+                                paddingTop: {
+                                    xs: 0,
+                                    sm: 1
+                                },
+                            }}>
+                                <IntroListItem icon={<AttributionIcon sx={{
+                                    color: grey[800],
+                                    // fontSize: 16
+                                }} />} text="A lossy copy of the real Tom." />
+                                <IntroListItem icon={<ReportProblemOutlinedIcon sx={{
+                                    color: grey[800],
+                                }} />} text="May know things beyond Tom's Knowledge." />
+                            </List>
+                        </Grid>
+                    </Grid>
+                </Box>
+                <Message speaker='"Tom"' text={welcome_text} />
+            </>
         }
 
         {
@@ -309,7 +401,7 @@ export const Salieri = () => {
         {
             // User Question
             (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer") &&
-            <Message speaker="you" text={userQuestion} />
+            <Message speaker="You" text={userQuestion} />
         }
         {
             // Salieri Response
