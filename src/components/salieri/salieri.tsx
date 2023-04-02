@@ -1,10 +1,10 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, Alert, Link } from "@mui/material"
+import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
 import BoltIcon from '@mui/icons-material/Bolt';
-import { DummySalieriBackend, useSalieri } from "./service";
+import { DummySalieriBackend, SalieriAPIBackend, useSalieri } from "./service";
 import { styled } from "@mui/system";
 import { Turnstile, TurnstileInstance } from "@marsidev/react-turnstile";
 
@@ -263,14 +263,14 @@ export const Salieri = () => {
     // initialize Salieri Service
 
     const [userQuestion, setUserQuestion] = useState("")
-    const backend = useMemo(() => DummySalieriBackend, [])
+    const backend = useMemo(() => SalieriAPIBackend, [])
     const service = useSalieri(backend)
 
     // captcha
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
     const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
-    const welcome_text = (service.hints == null) ? "Salieri is Loading..." : service.hints.welcome
+    const welcome_text = (service.hints == null) ? "" : service.hints.welcome
 
     const reset = useCallback(() => {
         setUserQuestion("");
@@ -279,7 +279,20 @@ export const Salieri = () => {
     }, [service])
 
     return <Box>
-        <Message speaker="Salieri" text={welcome_text} />
+        {
+            service.state === "initializing" &&
+            <Box sx={{
+                display: 'flex', justifyContent: "center"
+            }}>
+                <CircularProgress />
+            </Box>
+        }
+        {
+            (service.state === "hint_ready" || service.state === "answering" || service.state === "done" || service.state === "error_loading_answer")
+            &&
+            <Message speaker="Salieri" text={welcome_text} />
+        }
+
         {
             (service.state === "hint_ready") &&
             <InputBox
@@ -295,12 +308,12 @@ export const Salieri = () => {
         }
         {
             // User Question
-            (service.state === "answering" || service.state === "done" || service.state === "error") &&
+            (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer") &&
             <Message speaker="you" text={userQuestion} />
         }
         {
             // Salieri Response
-            (service.state === "answering" || service.state === "done" || service.state === "error") && service.answer != null &&
+            (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer") && service.answer != null &&
             <ResponseBox answering={service.state === "answering"} answer={service.answer} onStartOver={() => { reset() }} />
         }
         {
@@ -320,7 +333,7 @@ export const Salieri = () => {
         }
         {
             // Start Over
-            (service.state === "answering" || service.state === "done" || service.state === "error") &&
+            (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer" || service.state === "error_loading_hints") &&
             <Box sx={{
                 display: "flex",
                 justifyContent: "flex-end",
