@@ -72,13 +72,13 @@ if (!SALIERI_API_ENDPOINT_ENV) {
 }
 const SALIERI_HINT_ENDPOINT = (() => {
     const url = new URL(SALIERI_API_ENDPOINT_ENV);
-    url.pathname = "/hint"
+    url.pathname += "/hint"
     return url
 })();
 const SALIERI_CHAT_ENDPOINT = (() => {
     const url = new URL(SALIERI_API_ENDPOINT_ENV);
     url.protocol = url.protocol.replace("http", "ws");
-    url.pathname = "/chat"
+    url.pathname += "/chat"
     return url
 })();
 /**

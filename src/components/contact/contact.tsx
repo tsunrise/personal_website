@@ -14,9 +14,8 @@ import TelegramIcon from '@mui/icons-material/Telegram';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import WechatIcon from "../../images/icons/wechat";
 import { blue, green, grey } from "@mui/material/colors";
-import githubAvatar from "../../images/github_avatar.jpg";
-import totoroAvatar from "../../images/totoro.jpg";
-import facebookAvatar from "../../images/facebook_avatar.bmp";
+import majoAvatar from "../../images/majo.png";
+import telegramAvatar from "../../images/telegram.jpg";
 import wechatQRCode from "../../images/qr-code.svg";
 import { Email } from "@mui/icons-material";
 import { styled } from "@mui/system";
@@ -82,27 +81,22 @@ function ContactContent(prop: contentProp) {
             subheader={subheader}
         />
 
-    const [githubAvatarLink, setGithubAvatarLink] = useState(githubAvatar)
-    fetch(githubAPI).then(res => res.json()).then(res => {
-        setGithubAvatarLink(res.avatar_url)
-    });
-
     const githubContent = <CardRoot elevation={0}>
-        {makeCardHeader(githubAvatarLink, "Github Avatar", githubLink, "Tom Shen", "@tsunrise")}
+        {makeCardHeader(majoAvatar, "Github Avatar", githubLink, "Tom Shen", "@tsunrise")}
         <ButtonContainer>
             <LinkButton text="View Profile" target={githubLink} color="inherit" />
         </ButtonContainer>
     </CardRoot>
 
     const telegramContent = <CardRoot elevation={0}>
-        {makeCardHeader(totoroAvatar, "Telegram Avatar", telegramLink, "Tom Shen", "@tsunrise")}
+        {makeCardHeader(telegramAvatar, "Telegram Avatar", telegramLink, "Tom Shen", "@tsunrise")}
         <ButtonContainer>
             <LinkButton text="Send Message" target={telegramLink} color="primary" />
         </ButtonContainer>
     </CardRoot>
 
     const facebookContent = <CardRoot elevation={0}>
-        {makeCardHeader(facebookAvatar, "Facebook Avatar", facebookLink, "Tom Shen", "@tomshen.h")}
+        {makeCardHeader(majoAvatar, "Facebook Avatar", facebookLink, "Tom Shen", "@tomshen.h")}
         <ButtonContainer>
             <LinkButton text="View Profile" target={facebookLink} color="primary" />
         </ButtonContainer>
@@ -111,7 +105,7 @@ function ContactContent(prop: contentProp) {
     const wechatContent = <CardRoot elevation={0}>
         <CardHeader
             avatar={
-                <Avatar src={totoroAvatar} alt={"Wechat Avatar"} />
+                <Avatar src={majoAvatar} alt={"Wechat Avatar"} />
             }
             title={"Tom Shen"}
             subheader="Use Wechat App to scan QR Code"
