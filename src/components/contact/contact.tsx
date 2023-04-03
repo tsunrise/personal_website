@@ -5,23 +5,20 @@ import {
     CardContent,
     CardHeader,
     Collapse,
-    createStyles,
     Grid,
     IconButton,
-    makeStyles,
-    Theme,
-} from "@material-ui/core";
-import React, {cloneElement, useState} from "react";
-import GitHubIcon from '@material-ui/icons/GitHub';
-import TelegramIcon from '@material-ui/icons/Telegram';
-import FacebookIcon from '@material-ui/icons/Facebook';
+} from "@mui/material";
+import { useState } from "react";
+import GitHubIcon from '@mui/icons-material/GitHub';
+import TelegramIcon from '@mui/icons-material/Telegram';
+import FacebookIcon from '@mui/icons-material/Facebook';
 import WechatIcon from "../../images/icons/wechat";
-import {blue, green, grey} from "@material-ui/core/colors";
-import githubAvatar from "../../images/github_avatar.jpg";
-import totoroAvatar from "../../images/totoro.jpg";
-import facebookAvatar from "../../images/facebook_avatar.bmp";
+import { blue, green, grey } from "@mui/material/colors";
+import majoAvatar from "../../images/majo.png";
+import telegramAvatar from "../../images/telegram.jpg";
 import wechatQRCode from "../../images/qr-code.svg";
-import {Email} from "@material-ui/icons";
+import { Email } from "@mui/icons-material";
+import { styled } from "@mui/system";
 
 interface Props {
 
@@ -41,113 +38,92 @@ interface contentProp {
     toggleStatus: (status: Status) => void
 }
 
-const useGadgetStyles = makeStyles((theme: Theme) => createStyles({
-    fullWidth: {
-        width: '100%'
-    },
-    imgIcon: {
-        height: '100%'
-    },
-    iconColorTransition: {
-        transition: theme.transitions.create(['color'], {duration: theme.transitions.duration.standard})
-    },
+const CardRoot = styled(Card)(({ theme }) => ({
+    width: '100%',
 }))
 
-const useContentStyles = makeStyles((_theme: Theme) => createStyles({
-    cardRoot: {
-        width: '100%'
-    },
-    buttonContainer: {
-        display: 'flex',
-        flexDirection: `row`,
-        justifyContent: 'center'
-    },
-    clickable: {
-        cursor: 'pointer'
-    },
-    jobButton: {
-        marginRight: 1,
-        marginLeft: 1
-    }
-}))
+const ButtonContainer = styled(CardContent)({
+    display: 'flex',
+    flexDirection: `row`,
+    justifyContent: 'center'
+})
 
-const githubAPI = "https://api.github.com/users/tsunrise";
+const ActionButton = ({ text, action, color }: { text: string, action: () => void, color: 'inherit' | 'primary' | 'secondary' }) => {
+    return <Button size="small" variant="outlined" style={{
+        width: '100%', marginRight: 1, marginLeft: 1
+    }} onClick={action} color={color}>{text}</Button>
+}
+
+const LinkButton = ({ text, target, color }: { text: string, target: string, color: 'inherit' | 'primary' | 'secondary' }) => {
+    return <ActionButton text={text} action={() => {
+        window.open(target, '_blank')
+    }} color={color} />
+}
+
+const githubLink = "https://github.com/tsunrise"
+const telegramLink = "https://t.me/tsunrise"
+const facebookLink = "https://www.facebook.com/tomshen.h"
 
 function ContactContent(prop: contentProp) {
-    const classes = useContentStyles(prop);
 
     const makeCardHeader = (avatar: string, alt: string, target: string, title: string, subheader: string) =>
         <CardHeader
             avatar={
                 <Avatar src={avatar} alt={alt} onClick={() => {
                     window.open(target, '_blank')
-                }} className={classes.clickable}/>
+                }} sx={{
+                    cursor: 'pointer'
+                }} />
             }
             title={title}
             subheader={subheader}
         />
 
-    const makeActionButton = (text: string, action: () => void, color: 'inherit' | 'primary' | 'secondary' | 'default') =>
-        <Button size="small" variant="outlined" style={{width: '100%'}} onClick={action} color={color}>{text}</Button>
-    const makeButton = (text: string, target: string, color: 'inherit' | 'primary' | 'secondary' | 'default') =>
-        makeActionButton(text, () => {
-            window.open(target, '_blank')
-        }, color)
+    const githubContent = <CardRoot elevation={0}>
+        {makeCardHeader(majoAvatar, "Github Avatar", githubLink, "Tom Shen", "@tsunrise")}
+        <ButtonContainer>
+            <LinkButton text="View Profile" target={githubLink} color="inherit" />
+        </ButtonContainer>
+    </CardRoot>
 
-    const githubLink = "https://github.com/tsunrise"
+    const telegramContent = <CardRoot elevation={0}>
+        {makeCardHeader(telegramAvatar, "Telegram Avatar", telegramLink, "Tom Shen", "@tsunrise")}
+        <ButtonContainer>
+            <LinkButton text="Send Message" target={telegramLink} color="primary" />
+        </ButtonContainer>
+    </CardRoot>
 
-    const [githubAvatarLink, setGithubAvatarLink] = useState(githubAvatar)
-    fetch(githubAPI).then(res => res.json()).then(res => {
-        setGithubAvatarLink(res.avatar_url)
-    });
+    const facebookContent = <CardRoot elevation={0}>
+        {makeCardHeader(majoAvatar, "Facebook Avatar", facebookLink, "Tom Shen", "@tomshen.h")}
+        <ButtonContainer>
+            <LinkButton text="View Profile" target={facebookLink} color="primary" />
+        </ButtonContainer>
+    </CardRoot>
 
-    const githubContent = <Card className={classes.cardRoot} elevation={0}>
-        {makeCardHeader(githubAvatarLink, "Github Avatar", githubLink, "Tom Shen", "@tsunrise")}
-        <CardContent className={classes.buttonContainer}>
-            {makeButton("View Profile", githubLink, "inherit")}
-        </CardContent>
-    </Card>
-
-    const telegramLink = "https://t.me/tsunrise"
-    const telegramContent = <Card className={classes.cardRoot} elevation={0}>
-        {makeCardHeader(totoroAvatar, "Telegram Avatar", telegramLink, "Tom Shen", "@tsunrise")}
-        <CardContent className={classes.buttonContainer}>
-            {makeButton("Send Message", telegramLink, "primary")}
-        </CardContent>
-    </Card>
-
-    const facebookLink = "https://www.facebook.com/tomshen.h"
-    const facebookContent = <Card className={classes.cardRoot} elevation={0}>
-        {makeCardHeader(facebookAvatar, "Facebook Avatar", facebookLink, "Tom Shen", "@tomshen.h")}
-        <CardContent className={classes.buttonContainer}>
-            {makeButton("View Profile", facebookLink, "primary")}
-        </CardContent>
-    </Card>
-
-    const wechatContent = <Card className={classes.cardRoot} elevation={0}>
+    const wechatContent = <CardRoot elevation={0}>
         <CardHeader
             avatar={
-                <Avatar src={totoroAvatar} alt={"Wechat Avatar"}/>
+                <Avatar src={majoAvatar} alt={"Wechat Avatar"} />
             }
             title={"Tom Shen"}
             subheader="Use Wechat App to scan QR Code"
         />
-        <CardContent style={{display: 'flex', flexDirection: "row", justifyContent: "center"}}>
-            <img src={wechatQRCode} alt="wechat QR code" style={{width: '100%', maxWidth: '200px'}}/>
+        <CardContent style={{ display: 'flex', flexDirection: "row", justifyContent: "center" }}>
+            <img src={wechatQRCode} alt="wechat QR code" style={{ width: '100%', maxWidth: '200px' }} />
         </CardContent>
-    </Card>
+    </CardRoot>
     // for email content, display an addition small line on the bottom showing when should use email
-    const emailContent = <Card className={classes.cardRoot} elevation={0}>
+    const emailContent = <CardRoot elevation={0}>
         <CardHeader
             avatar={
                 <Avatar alt={"Email Avatar"}>
-                    <Email/>
+                    <Email />
                 </Avatar>
             }
             title={"Tom Shen"}
             subheader="me <at> tomshen.io"
         />
-    </Card>
+    </CardRoot>
 
     return <Grid item xs={12}>
         <Collapse in={prop.status === Status.Github} mountOnEnter unmountOnExit>
@@ -165,18 +141,25 @@ function ContactContent(prop: contentProp) {
         <Collapse in={prop.status === Status.Email} mountOnEnter unmountOnExit>
             {emailContent}
         </Collapse>
-        <CardContent className={classes.buttonContainer}>
-            {cloneElement(makeButton("Resume", "/resume.pdf", "secondary"), {className: classes.jobButton})}
-            {cloneElement(makeActionButton("Email", () => prop.toggleStatus(Status.Email), "secondary"), {className: classes.jobButton})}
-        </CardContent>
+        <ButtonContainer>
+            <LinkButton text="Resume" target="/resume.pdf" color="secondary" />
+            <ActionButton text="Email" action={() => prop.toggleStatus(Status.Email)} color="secondary" />
+        </ButtonContainer>
 
     </Grid>
 }
 
+
+const MyIconButton = styled(IconButton, {
+    shouldForwardProp: (prop) => prop !== 'activeStatus' && prop !== 'activeColor'
+})<{ activeStatus: boolean, activeColor: string }>(({ theme, activeStatus, activeColor }) => ({
+    transition: (theme.transitions as any).create(['color'], { duration: (theme.transitions as any).duration.standard }),
+    color: activeStatus ? activeColor : grey[500],
+}));
+
 export default function ContactGadget(prop: Props) {
 
     const [contactState, setContactState] = useState(Status.Inactive);
-    const classes = useGadgetStyles(prop);
     const toggleContactState = (s: Status) => {
         if (contactState === s) {
             setContactState(Status.Inactive);
@@ -185,45 +168,40 @@ export default function ContactGadget(prop: Props) {
         }
     }
 
-    const activeColor = (activeState: Status, color: string) => {
-        if (contactState === activeState) {
-            return {color: color}
-        } else {
-            return {color: grey[500]}
-        }
+
+    return <Grid container justifyContent="center" direction="column" alignItems="center" sx={{
+        width: '100%',
     }
-
-
-    return <Grid container className={classes.fullWidth} justify="center" direction="column" alignItems="center">
+    }>
         <Grid item>
-            <IconButton className={classes.iconColorTransition} onClick={() => {
+            <MyIconButton activeStatus={contactState === Status.Github} activeColor={grey[900]} onClick={() => {
                 toggleContactState(Status.Github)
-            }} style={activeColor(Status.Github, grey[900])}>
-                <GitHubIcon/>
-            </IconButton>
-            <IconButton className={classes.iconColorTransition} onClick={() => {
+            }}
+                aria-label="github"
+            > <GitHubIcon /> </MyIconButton>
+            <MyIconButton activeStatus={contactState === Status.Telegram} activeColor={blue[300]} onClick={() => {
                 toggleContactState(Status.Telegram)
-            }} style={activeColor(Status.Telegram, blue[300])}>
-                <TelegramIcon/>
-            </IconButton>
-            <IconButton className={classes.iconColorTransition} onClick={() => {
+            }}
+                aria-label="telegram"
+            > <TelegramIcon /> </MyIconButton>
+            <MyIconButton activeStatus={contactState === Status.Facebook} activeColor={blue[900]} onClick={() => {
                 toggleContactState(Status.Facebook)
-            }} style={activeColor(Status.Facebook, blue[900])}>
-                <FacebookIcon/>
-            </IconButton>
-            <IconButton className={classes.iconColorTransition} onClick={() => {
+            }}
+                aria-label="facebook"
+            > <FacebookIcon /> </MyIconButton>
+            <MyIconButton activeStatus={contactState === Status.Wechat} activeColor={green[800]} onClick={() => {
                 toggleContactState(Status.Wechat)
-            }} style={activeColor(Status.Wechat, green[800])}>
-                <WechatIcon/>
-            </IconButton>
+            }}
+                aria-label="wechat"
+            > <WechatIcon /> </MyIconButton>
         </Grid>
 
         <Grid item container direction="row">
-            <Grid xs={12}>
-                <ContactContent status={contactState} toggleStatus={toggleContactState}/>
+            <Grid item xs={12}>
+                <ContactContent status={contactState} toggleStatus={toggleContactState} />
             </Grid>
         </Grid>
 
 
-    </Grid>
+    </Grid >
 }
