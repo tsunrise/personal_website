@@ -93,7 +93,7 @@ export default function MainGrid() {
                             marginBottom: 2
                         }} />
                         <Typography variant="body2" color="textSecondary" style={{ marginBottom: 15 }}>
-                            The Salieri System is a language model, and may display inaccurate or offensive information that doesn't represent the real Tom's views.
+                            The Salieri System is a language model based on GPT-3.5, and may display inaccurate or offensive information that doesn't represent the real Tom's views.
                             <br />
                             © Conghao Shen | <PrivacyDialog /> | <Link href="https://github.com/tsunrise/personal_website" target="_blank" rel="noreferrer" variant="body2" color="secondary">Source</Link>
                         </Typography>

@@ -38,8 +38,6 @@ interface contentProp {
     toggleStatus: (status: Status) => void
 }
 
-const githubAPI = "https://api.github.com/users/tsunrise";
-
 const CardRoot = styled(Card)(({ theme }) => ({
     width: '100%',
 }))
