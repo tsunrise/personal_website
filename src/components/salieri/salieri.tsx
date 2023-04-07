@@ -268,7 +268,10 @@ const ResponseBox = (props: { answering: boolean, answer: string, warning?: stri
     </Box>
 }
 
-const IntroListItem = (props: { icon: React.ReactElement, text: string }) => {
+const IntroListItem = (props: {
+    icon: React.ReactElement,
+    children: React.ReactNode
+}) => {
     return <ListItem sx={{
         padding: 0,
         justifyContent: {
@@ -291,7 +294,7 @@ const IntroListItem = (props: { icon: React.ReactElement, text: string }) => {
             color: grey[800],
             marginRight: 1,
         }}>
-            {props.text}
+            {props.children}
         </ListItemText>
     </ListItem>
 }
@@ -373,10 +376,15 @@ export const Salieri = () => {
                                 <IntroListItem icon={<AttributionIcon sx={{
                                     color: grey[800],
                                     // fontSize: 16
-                                }} />} text="A lossy copy of the real Tom." />
+                                }} />}>
+                                    A lossy copy of the real Tom.
+                                </IntroListItem>
                                 <IntroListItem icon={<ReportProblemOutlinedIcon sx={{
                                     color: grey[800],
-                                }} />} text="May know things beyond Tom's Knowledge." />
+                                }} />}>
+                                    May <Link href="https://en.wikipedia.org/wiki/Hallucination_(artificial_intelligence)" target="_blank" rel="noreferrer" color="inherit"
+                                    >confidently</Link> produce incorrect answer.
+                                </IntroListItem>
                             </List>
                         </Grid>
                     </Grid>
