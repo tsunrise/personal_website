@@ -312,6 +312,7 @@ export const Salieri = () => {
 
     const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
     const welcome_text = (service.hints == null) ? "" : service.hints.welcome
+    const announcement = (service.hints == null) ? null : service.hints.announcement
 
     const reset = useCallback(() => {
         setUserQuestion("");
@@ -389,6 +390,11 @@ export const Salieri = () => {
                         </Grid>
                     </Grid>
                 </Box>
+                {
+                    (service.state === "hint_ready") && (announcement != null) && <WrapAlert severity="info">
+                        {announcement}
+                    </WrapAlert>
+                }
                 <Message speaker='"Tom"' text={welcome_text} />
             </>
         }
@@ -404,7 +410,6 @@ export const Salieri = () => {
                 submit={() => { if (captchaToken != null) { service.ask(userQuestion, captchaToken) } }}
                 max_length={300} // TODO: enforce max length in backend
             />
-
         }
         {
             // User Question

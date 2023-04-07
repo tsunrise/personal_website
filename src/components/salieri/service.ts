@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 interface Hints {
     welcome: string;
     suggested_questions: string[];
+    announcement: string | null;
 }
 
 interface StreamItemDelta {
@@ -28,7 +29,8 @@ export const DummySalieriBackend: SalieriBackend = {
         await delay(1000);
         return {
             welcome: "Hi, I'm Tom's friend Salieri! Whether you're curious about Tom's work, hobbies, or favorites, I'm here to instantly assist you—anytime.",
-            suggested_questions: ["What is Tom's hobby?", "What is Tom's favorite color?", "What is Tom's favorite food?"]
+            suggested_questions: ["What is Tom's hobby?", "What is Tom's favorite color?", "What is Tom's favorite food?"],
+            announcement: null,
         };
     },
 
