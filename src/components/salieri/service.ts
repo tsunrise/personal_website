@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { stat } from "fs";
+import { useCallback, useEffect, useRef, useState } from "react";
+import internal from "stream";
 
 interface Hints {
     welcome: string;
@@ -16,17 +18,30 @@ interface StreamItemStop {
     stop_reason: 'finish' | 'length' | 'content_filter' | 'unavailable'
 }
 
+interface StreamItemMeta {
+    type: 'meta';
+    id: string;
+}
+
+interface LookupHistoryResponse {
+    question: string;
+    response: string;
+    timestamp: number;
+}
+
+
 // TODO: put me in useEffect(..., []) instead of the component function to avoid re-creating the service on every render
 export interface SalieriBackend {
     getHints(): Promise<Hints>;
-    subscribeToAnswer(question: string, token: string, onUpdate: (item: StreamItemDelta | StreamItemStop) => void, onError: (e: Error) => void): void;
+    subscribeToAnswer(question: string, token: string, onUpdate: (item: StreamItemDelta | StreamItemStop | StreamItemMeta) => void, onError: (e: Error) => void): void;
+    getResponseHistory(id: string): Promise<LookupHistoryResponse>;
 }
 
 // dummy service
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export const DummySalieriBackend: SalieriBackend = {
     getHints: async () => {
-        await delay(1000);
+        await delay(200);
         return {
             welcome: "Hi, I'm Tom's friend Salieri! Whether you're curious about Tom's work, hobbies, or favorites, I'm here to instantly assist you—anytime.",
             suggested_questions: ["What is Tom's hobby?", "What is Tom's favorite color?", "What is Tom's favorite food?"],
@@ -43,6 +58,7 @@ export const DummySalieriBackend: SalieriBackend = {
         }
         if (question === "hhh2") {
             onUpdate({ type: 'stop', stop_reason: 'content_filter' });
+            onUpdate({ type: 'meta', id: '2022-01-01-test1' + token.substring(0, 10) });
             return;
         }
         if (question === "hhh3") {
@@ -51,7 +67,7 @@ export const DummySalieriBackend: SalieriBackend = {
         }
         (async () => {
             for (const word of deltas) {
-                await delay(100);
+                await delay(50);
                 onUpdate({ type: 'delta', delta: word });
             }
             if (question === "hhh4") {
@@ -63,7 +79,17 @@ export const DummySalieriBackend: SalieriBackend = {
                 return;
             }
             onUpdate({ type: 'stop', stop_reason: 'finish' });
+            onUpdate({ type: 'meta', id: '2022-01-01-test2' + token.substring(0, 10) });
         })();
+    },
+
+    getResponseHistory: async (id: string) => {
+        await delay(1000);
+        return {
+            question: "What is Tom's hobby?",
+            response: "Tom's hobby is programming. id=" + id,
+            timestamp: 1234567890,
+        };
     }
 }
 
@@ -89,30 +115,16 @@ const SALIERI_CHAT_ENDPOINT = (() => {
     url.pathname += "chat";
     return url
 })();
-/**
- * API Examples:
- * GET /hint
-OK case:
-{"hint":["What is the link to Tom's resume?","What are Tom's GitHub and LinkedIn profiles?","What are Tom's favorite anime?"]}
-Error case:
-{"error":"Salieri is currently unavailable", "status_code":500}
-WS /chat -> {"question":"Hi, Who are you?", "captcha_token":"very secret token"}
-OK case:
-send: "{"question":"Hi, Who are you?", "captcha_token":"very secret token"}
-recv: {"start":128}
-recv: {"delta":"Hello"}
-recv: {"delta":"!"}
-recv: {"delta":" I"}
-recv: {"delta":" am"}
-recv: {"delta":" Sal"}
-recv: {"delta":"ieri"}
-recv: {"delta":","}
-...
-recv: {"finish":"stop"}
-Error case:
-send: "{"question":"Hi, Who are you?", "captcha_token":"very secret token"}
-recv: {"error":"internal error"}
- */
+const SALIERI_LOOKUP_ENDPOINT = (() => {
+    const url = new URL(SALIERI_API_ENDPOINT_ENV);
+    if (!url.pathname.endsWith("/")) {
+        url.pathname += "/";
+    }
+    url.pathname += "lookup";
+    return url
+})();
+
+
 export const SalieriAPIBackend: SalieriBackend = {
     getHints: async () => {
         const response = await fetch(SALIERI_HINT_ENDPOINT);
@@ -129,12 +141,21 @@ export const SalieriAPIBackend: SalieriBackend = {
 
     subscribeToAnswer: (question, token, onUpdate, onError) => {
         const ws = new WebSocket(SALIERI_CHAT_ENDPOINT);
+        let ended = false;
         ws.onopen = () => {
             ws.send(JSON.stringify({ question, captcha_token: token }));
         };
         ws.onmessage = (event) => {
             const item = JSON.parse(event.data);
             switch (true) {
+                case ended:
+                    const meta = item;
+                    if (meta.id) {
+                        onUpdate({ type: 'meta', id: meta.id });
+                    } else {
+                        console.error("Unknown message: " + event.data);
+                    }
+                    break;
                 case 'start' in item:
                     // ignore
                     // TODO: handle start message
@@ -144,10 +165,11 @@ export const SalieriAPIBackend: SalieriBackend = {
                     break;
                 case 'finish' in item:
                     onUpdate({ type: 'stop', stop_reason: item.finish });
-                    ws.close();
+                    ended = true;
                     break;
                 case 'error' in item:
                     onError(new Error(item.error));
+                    ended = true;
                     ws.close();
                     break;
                 default:
@@ -162,18 +184,51 @@ export const SalieriAPIBackend: SalieriBackend = {
             console.log("WebSocket closed: " + event.code);
         }
 
+    },
+
+    getResponseHistory: async (id: string) => {
+        const response = await fetch(SALIERI_LOOKUP_ENDPOINT + "?id=" + id);
+        if (response.ok) {
+            const resp = await response.json(); // a single lookupHistoryResponse
+            if (resp.question && resp.response && resp.timestamp) {
+                return resp;
+            }
+            throw new Error("Invalid response: " + JSON.stringify(resp));
+        }
+        const { error } = await response.json();
+        throw new Error(error);
     }
+
+
 }
 
 type SalieriState = 'initializing' | 'hint_ready' | 'answering' | 'done' | 'error_loading_answer' | 'error_loading_hints';
 
 // service hook
 export const useSalieri = (backend: SalieriBackend) => {
-    const [state, setState] = useState<SalieriState>("initializing");
+    const [state, _setState] = useState<SalieriState>("initializing");
+    const stateRef = useRef(state);
+    const setState = useCallback((state: SalieriState) => {
+        stateRef.current = state;
+        _setState(state);
+    }, []);
+
     const [error, setError] = useState<string | null>(null);
     const [warning, setWarning] = useState<string | null>(null);
     const [hints, setHints] = useState<Hints | null>(null);
+    const [question, setQuestion] = useState<string | null>(null);
     const [answer, setAnswer] = useState<string | null>(null);
+
+    const [id, setId] = useState<string | null>(null);
+    useEffect(() => {
+        if (id) {
+            window.history.pushState({}, "", "/history/" + id);
+            window.document.title = "Tom Shen - " + (question !== null ? question : id);
+        } else {
+            window.history.pushState({}, "", "/");
+            window.document.title = "Tom Shen";
+        }
+    }, [id, question]);
 
     const getHints = useCallback(async () => {
         try {
@@ -189,7 +244,7 @@ export const useSalieri = (backend: SalieriBackend) => {
             setError(error_message);
             setState("error_loading_hints");
         }
-    }, [backend])
+    }, [backend, setState])
 
     useEffect(() => {
         getHints();
@@ -199,9 +254,9 @@ export const useSalieri = (backend: SalieriBackend) => {
         console.error("Salieri error: " + e.message);
         setError("There was an error while answering: " + e.message);
         setState("error_loading_answer");
-    }, []);
+    }, [setState]);
 
-    const ask = (question: string, token: string) => {
+    const ask = useCallback((question: string, token: string) => {
         if (state === "answering") {
             console.error("Asked while answering. Ignore.");
             return;
@@ -214,7 +269,7 @@ export const useSalieri = (backend: SalieriBackend) => {
             backend.subscribeToAnswer(question, token, (item) => {
                 if (item.type === 'delta') {
                     setAnswer((answer) => answer + item.delta);
-                } else {
+                } else if (item.type === 'stop') {
                     setState("done");
                     if (item.stop_reason === 'finish') {
                         console.log("Answering finished");
@@ -226,6 +281,13 @@ export const useSalieri = (backend: SalieriBackend) => {
                         setError("Salieri is currently unavailable");
                     }
                     // we do not set state to ERROR here because we want to show the answer
+                } else {
+                    if (stateRef.current !== "done") {
+                        console.error(`Received unexpected message type ${item.type} while state is ${state}`);
+                    }
+                    setQuestion(question);
+                    const id = item.id;
+                    setId(id);
                 }
             }, (e) => {
                 handleError(e);
@@ -236,15 +298,16 @@ export const useSalieri = (backend: SalieriBackend) => {
             }
         }
 
-
-    }
+    }, [backend, state, handleError, setId, setState])
 
     const reset = () => {
         setState("initializing");
         setError(null);
         setWarning(null);
         setHints(null);
+        setQuestion(null);
         setAnswer(null);
+        setId(null);
         getHints();
     }
 

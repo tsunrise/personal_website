@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
 import BoltIcon from '@mui/icons-material/Bolt';
-import { SalieriAPIBackend, useSalieri } from "./service";
+import { DummySalieriBackend, SalieriAPIBackend, useSalieri } from "./service";
 import AttributionIcon from '@mui/icons-material/Attribution';
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import { styled } from "@mui/system";
@@ -304,7 +304,8 @@ export const Salieri = () => {
     // initialize Salieri Service
 
     const [userQuestion, setUserQuestion] = useState("")
-    const backend = useMemo(() => SalieriAPIBackend, [])
+    // const backend = useMemo(() => SalieriAPIBackend, [])
+    const backend = useMemo(() => DummySalieriBackend, [])
     const service = useSalieri(backend)
 
     // captcha
