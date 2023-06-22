@@ -205,7 +205,7 @@ export const SalieriAPIBackend: SalieriBackend = {
 type SalieriState = 'initializing' | 'hint_ready' | 'answering' | 'done' | 'error_loading_answer' | 'error_loading_hints';
 
 // service hook
-export const useSalieri = (backend: SalieriBackend) => {
+export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
     const [state, _setState] = useState<SalieriState>("initializing");
     const stateRef = useRef(state);
     const setState = useCallback((state: SalieriState) => {
@@ -220,15 +220,6 @@ export const useSalieri = (backend: SalieriBackend) => {
     const [answer, setAnswer] = useState<string | null>(null);
 
     const [id, setId] = useState<string | null>(null);
-    useEffect(() => {
-        if (id) {
-            window.history.pushState({}, "", "/history/" + id);
-            window.document.title = "Tom Shen - " + (question !== null ? question : id);
-        } else {
-            window.history.pushState({}, "", "/");
-            window.document.title = "Tom Shen";
-        }
-    }, [id, question]);
 
     const getHints = useCallback(async () => {
         try {
@@ -246,9 +237,76 @@ export const useSalieri = (backend: SalieriBackend) => {
         }
     }, [backend, setState])
 
+    // history load: from URL
     useEffect(() => {
-        getHints();
-    }, [getHints]);
+        if (window.location.pathname.startsWith("/history/")) {
+
+            const id = window.location.pathname.substring("/history/".length);
+            (async () => {
+                try {
+                    const hints = await backend.getHints();
+                    setHints(hints);
+                    const { question, response, timestamp } = await backend.getResponseHistory(id);
+                    setQuestion(question);
+                    updateTitle(question);
+                    setAnswer(response);
+                    setId(id);
+                    setState("done");
+                } catch (e) {
+                    let error_message = "Failed to load history";
+                    if (e instanceof Error) {
+                        error_message += ": " + e.message;
+                    }
+                    console.error(error_message);
+                    setError(error_message);
+                    setState("error_loading_answer");
+                }
+            })()
+        } else {
+            getHints();
+        }
+    }, []);
+
+    // history load: from pop state
+    useEffect(() => {
+        const onPopState = () => {
+            if (window.location.pathname.startsWith("/history/")) {
+                const id = window.location.pathname.substring("/history/".length);
+                (async () => {
+                    try {
+                        const { question, response, timestamp } = await backend.getResponseHistory(id);
+                        setQuestion(question);
+                        updateTitle(question);
+                        setAnswer(response);
+                        setId(id);
+                        setState("done");
+                    } catch (e) {
+                        let error_message = "Failed to load history";
+                        if (e instanceof Error) {
+                            error_message += ": " + e.message;
+                        }
+                        console.error(error_message);
+                        setError(error_message);
+                        setState("error_loading_answer");
+                    }
+                })()
+            } else {
+                reset(true);
+            }
+        };
+        window.addEventListener("popstate", onPopState);
+        return () => {
+            window.removeEventListener("popstate", onPopState);
+        }
+    }, [backend, setState]);
+
+    const updateTitle = (question: string | null) => {
+        if (question !== null) {
+            window.document.title = "Tom Shen - " + question;
+        } else {
+            window.document.title = "Tom Shen";
+        }
+    };
 
     const handleError = useCallback((e: Error) => {
         console.error("Salieri error: " + e.message);
@@ -263,7 +321,7 @@ export const useSalieri = (backend: SalieriBackend) => {
         }
         setAnswer("");
         setState("answering");
-
+        setQuestion(question);
 
         try {
             backend.subscribeToAnswer(question, token, (item) => {
@@ -285,9 +343,10 @@ export const useSalieri = (backend: SalieriBackend) => {
                     if (stateRef.current !== "done") {
                         console.error(`Received unexpected message type ${item.type} while state is ${state}`);
                     }
-                    setQuestion(question);
                     const id = item.id;
                     setId(id);
+                    window.history.pushState({}, "", "/history/" + id);
+                    updateTitle(question);
                 }
             }, (e) => {
                 handleError(e);
@@ -300,7 +359,8 @@ export const useSalieri = (backend: SalieriBackend) => {
 
     }, [backend, state, handleError, setId, setState])
 
-    const reset = () => {
+    const reset = (no_push?: boolean) => {
+        onReset();
         setState("initializing");
         setError(null);
         setWarning(null);
@@ -308,6 +368,10 @@ export const useSalieri = (backend: SalieriBackend) => {
         setQuestion(null);
         setAnswer(null);
         setId(null);
+        if (!no_push) {
+            window.history.pushState({}, "", "/");
+        }
+        updateTitle(null);
         getHints();
     }
 
@@ -317,6 +381,7 @@ export const useSalieri = (backend: SalieriBackend) => {
         error,
         warning,
         hints,
+        question,
         answer,
         ask,
         reset

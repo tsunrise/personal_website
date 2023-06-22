@@ -304,22 +304,23 @@ export const Salieri = () => {
     // initialize Salieri Service
 
     const [userQuestion, setUserQuestion] = useState("")
-    // const backend = useMemo(() => SalieriAPIBackend, [])
-    const backend = useMemo(() => DummySalieriBackend, [])
-    const service = useSalieri(backend)
-
+    const backend = useMemo(() => SalieriAPIBackend, [])
     // captcha
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+
+    // const backend = useMemo(() => DummySalieriBackend, [])
+    const service = useSalieri(backend, useCallback(() => {
+        setUserQuestion("");
+        setCaptchaToken(null);
+    }, []))
+
 
     const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
     const welcome_text = (service.hints == null) ? "" : service.hints.welcome
     const announcement = (service.hints == null) ? null : service.hints.announcement
 
-    const reset = useCallback(() => {
-        setUserQuestion("");
-        setCaptchaToken(null);
-        service.reset()
-    }, [service])
+    const reset = service.reset;
 
     return <Box>
         {
@@ -415,7 +416,7 @@ export const Salieri = () => {
         {
             // User Question
             (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer") &&
-            <Message speaker="You" text={userQuestion} />
+            <Message speaker="You" text={service.question ?? ""} />
         }
         {
             // Salieri Response
