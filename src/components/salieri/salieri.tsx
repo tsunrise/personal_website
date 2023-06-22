@@ -1,9 +1,10 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, Grid, List, ListItemIcon, ListItem, ListItemText } from "@mui/material"
+import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, Grid, List, ListItemIcon, ListItem, ListItemText, IconButton, Snackbar } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
 import BoltIcon from '@mui/icons-material/Bolt';
+import LinkIcon from '@mui/icons-material/Link';
 import { DummySalieriBackend, SalieriAPIBackend, useSalieri } from "./service";
 import AttributionIcon from '@mui/icons-material/Attribution';
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
@@ -304,16 +305,16 @@ export const Salieri = () => {
     // initialize Salieri Service
 
     const [userQuestion, setUserQuestion] = useState("")
-    const backend = useMemo(() => SalieriAPIBackend, [])
+    // const backend = useMemo(() => SalieriAPIBackend, [])
+    const backend = useMemo(() => DummySalieriBackend, [])
     // captcha
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
-
-    // const backend = useMemo(() => DummySalieriBackend, [])
-    const service = useSalieri(backend, useCallback(() => {
+    const reset_handler = useCallback(() => {
         setUserQuestion("");
         setCaptchaToken(null);
-    }, []))
+    }, [])
+    const service = useSalieri(backend, reset_handler)
 
 
     const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
@@ -321,6 +322,33 @@ export const Salieri = () => {
     const announcement = (service.hints == null) ? null : service.hints.announcement
 
     const reset = service.reset;
+
+    const [notifMsg, setNotifMsg] = useState<string | null>(null);
+    const [notifOpen, setNotifOpen] = useState(false);
+    const [notifSuccessStatus, setNotifSuccessStatus] = useState(false);
+    const handleShare = useCallback(() => {
+        if (navigator.share) {
+            navigator.share({
+                title: 'Salieri System by Tom Shen',
+                text: service.question ?? "",
+                url: window.location.href,
+            })
+                .then(() => console.log('Successful share'))
+                .catch((error) => console.log('Error sharing', error));
+        } else {
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                setNotifMsg("Link copied to clipboard");
+                setNotifSuccessStatus(true);
+                setNotifOpen(true);
+            }
+            ).catch(() => {
+                setNotifMsg("Failed to copy link");
+                setNotifSuccessStatus(false);
+                setNotifOpen(true);
+            }
+            )
+        }
+    }, [service.question])
 
     return <Box>
         {
@@ -447,6 +475,13 @@ export const Salieri = () => {
                 ...wrap,
             }}
             >
+                <Grow in={service.state !== "answering"} timeout={600}>
+                    <IconButton color="secondary" onClick={() => {
+                        handleShare()
+                    }}>
+                        <LinkIcon />
+                    </IconButton>
+                </Grow>
                 <Grow in={service.state !== "answering"} timeout={400}>
                     <Button variant="outlined" startIcon={<ReplayIcon />} color="secondary"
                         onClick={() => {
@@ -456,7 +491,13 @@ export const Salieri = () => {
                         Start Over
                     </Button>
                 </Grow>
+                <Snackbar open={notifOpen} autoHideDuration={3000} onClose={() => { setNotifOpen(false) }} >
+                    <Alert onClose={() => { setNotifOpen(false) }} severity={notifSuccessStatus ? "success" : "error"} sx={{ width: '100%' }}>
+                        {notifMsg}
+                    </Alert>
+                </Snackbar>
             </Box>
+
         }
 
 
