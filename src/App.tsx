@@ -27,7 +27,7 @@ function App() {
   useEffect(() => {
     console.log("%cWelcome to Tom Shen's Personal Website. \nMy Github: https://github.com/tsunrise",
       `color: white; font-size: 15px`);
-    document.title = "Tom Shen"
+    // document.title = "Tom Shen"
   }, [])
 
   return (

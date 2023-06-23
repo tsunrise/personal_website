@@ -1,10 +1,13 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, Grid, List, ListItemIcon, ListItem, ListItemText } from "@mui/material"
+import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, Grid, List, ListItemIcon, ListItem, ListItemText, IconButton, Snackbar, Tooltip } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
 import SendIcon from '@mui/icons-material/Send';
 import BoltIcon from '@mui/icons-material/Bolt';
-import { SalieriAPIBackend, useSalieri } from "./service";
+import LinkIcon from '@mui/icons-material/Link';
+import IosShareIcon from '@mui/icons-material/IosShare';
+import CloseIcon from '@mui/icons-material/Close';
+import { DummySalieriBackend, SalieriAPIBackend, useSalieri } from "./service";
 import AttributionIcon from '@mui/icons-material/Attribution';
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import { styled } from "@mui/system";
@@ -305,20 +308,62 @@ export const Salieri = () => {
 
     const [userQuestion, setUserQuestion] = useState("")
     const backend = useMemo(() => SalieriAPIBackend, [])
-    const service = useSalieri(backend)
-
+    // const backend = useMemo(() => DummySalieriBackend, [])
     // captcha
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+    const reset_handler = useCallback(() => {
+        setUserQuestion("");
+        setCaptchaToken(null);
+        setReportAbuseActive(false);
+    }, [])
+    const service = useSalieri(backend, reset_handler)
+
 
     const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
     const welcome_text = (service.hints == null) ? "" : service.hints.welcome
     const announcement = (service.hints == null) ? null : service.hints.announcement
 
-    const reset = useCallback(() => {
-        setUserQuestion("");
-        setCaptchaToken(null);
-        service.reset()
-    }, [service])
+    const [reportAbuseActive, setReportAbuseActive] = useState<boolean>(false);
+
+    const reset = service.reset;
+
+    const [notifMsg, setNotifMsg] = useState<string | null>(null);
+    const [notifOpen, setNotifOpen] = useState(false);
+    const [notifSuccessStatus, setNotifSuccessStatus] = useState(false);
+
+    const displayNotif = useCallback((msg: string, success: boolean) => {
+        setNotifMsg(msg);
+        setNotifSuccessStatus(success);
+        setNotifOpen(true);
+    }, [])
+
+    const handleCopyLink = useCallback(() => {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+            displayNotif("Link copied to clipboard", true);
+        }).catch(() => {
+            displayNotif("Failed to copy link", false);
+        }
+        )
+    }, [displayNotif])
+
+    const handleShare = useCallback(() => {
+        if (navigator.share) {
+            navigator.share({
+                title: 'Salieri System by Tom Shen',
+                text: service.question ?? "",
+                url: window.location.href,
+            })
+                .then(() => console.log('Successful share'))
+                .catch((error) => console.log('Error sharing', error));
+        } else {
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                displayNotif("Your browser does not support sharing. Link copied to clipboard", true);
+            }).catch(() => {
+                displayNotif("Failed to copy link", false);
+            })
+        }
+    }, [service.question, displayNotif])
 
     return <Box>
         {
@@ -329,9 +374,10 @@ export const Salieri = () => {
                 <CircularProgress />
             </Box>
         }
+
         {
             // welcome
-            (service.state === "hint_ready" || service.state === "answering" || service.state === "done" || service.state === "error_loading_answer")
+            (service.state === "hint_ready" || service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer")
             &&
             <>
                 <Box>
@@ -389,6 +435,26 @@ export const Salieri = () => {
                             </List>
                         </Grid>
                     </Grid>
+                    {service.state === "done_history" &&
+                        <>
+                            <WrapAlert severity="info">
+                                <b>This is a past conversation.</b> The content is unmoderated and could potentially include offensive material. The answer may also be outdated.
+                                <Link sx={{ cursor: "pointer", marginLeft: 1 }} target="_blank" rel="noreferrer" variant="body2" onClick={() => { setReportAbuseActive(true) }}>
+                                    Report Abuse
+                                </Link>
+                            </WrapAlert>
+                            {reportAbuseActive &&
+                                <WrapAlert severity="info">
+                                    <Box>
+                                        <b>Report Abuse: </b>
+                                        <Link target="_blank" rel="noreferrer" variant="body2" href="https://forms.gle/QiCrtnxwzMxGLUYd8">via Google Form</Link>
+                                        <Link target="_blank" rel="noreferrer" variant="body2" href="mailto:dh5ek61f4@mozmail.com" sx={{ marginLeft: 1 }}>via Email</Link>
+                                    </Box>
+                                </WrapAlert>
+                            }
+                        </>
+
+                    }
                 </Box>
                 {
                     (service.state === "hint_ready") && (announcement != null) && <WrapAlert severity="info">
@@ -413,12 +479,14 @@ export const Salieri = () => {
         }
         {
             // User Question
-            (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer") &&
-            <Message speaker="You" text={userQuestion} />
+            (service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer") &&
+            <Message speaker={
+                service.state === "done_history" ? "\"You\"" : "You"
+            } text={service.question ?? ""} />
         }
         {
             // Salieri Response
-            (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer") && service.answer != null &&
+            (service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer") && service.answer != null &&
             <ResponseBox answering={service.state === "answering"} answer={service.answer} onStartOver={() => { reset() }} />
         }
         {
@@ -437,14 +505,35 @@ export const Salieri = () => {
 
         }
         {
-            // Start Over
-            (service.state === "answering" || service.state === "done" || service.state === "error_loading_answer" || service.state === "error_loading_hints") &&
+            // Actions
+            (service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer" || service.state === "error_loading_hints") &&
             <Box sx={{
                 display: "flex",
                 justifyContent: "flex-end",
                 ...wrap,
             }}
             >
+                {navigator.share != undefined &&
+                    <Grow in={service.state !== "answering"} timeout={800}>
+                        <Tooltip title="Share">
+                            <IconButton color="secondary" onClick={() => {
+                                handleShare()
+                            }}>
+                                <IosShareIcon />
+                            </IconButton>
+                        </Tooltip>
+                    </Grow>}
+                <Grow in={service.state !== "answering"} timeout={800}>
+                    <Tooltip title="Copy link">
+                        <IconButton color="secondary" sx={{
+                            marginRight: 1
+                        }} onClick={() => {
+                            handleCopyLink()
+                        }}>
+                            <LinkIcon />
+                        </IconButton>
+                    </Tooltip>
+                </Grow>
                 <Grow in={service.state !== "answering"} timeout={400}>
                     <Button variant="outlined" startIcon={<ReplayIcon />} color="secondary"
                         onClick={() => {
@@ -454,7 +543,13 @@ export const Salieri = () => {
                         Start Over
                     </Button>
                 </Grow>
+                <Snackbar open={notifOpen} autoHideDuration={3000} onClose={() => { setNotifOpen(false) }} >
+                    <Alert onClose={() => { setNotifOpen(false) }} severity={notifSuccessStatus ? "success" : "error"} sx={{ width: '100%' }}>
+                        {notifMsg}
+                    </Alert>
+                </Snackbar>
             </Box>
+
         }
 
 
