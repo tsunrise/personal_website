@@ -202,7 +202,7 @@ export const SalieriAPIBackend: SalieriBackend = {
 
 }
 
-type SalieriState = 'initializing' | 'hint_ready' | 'answering' | 'done' | 'error_loading_answer' | 'error_loading_hints';
+type SalieriState = 'initializing' | 'hint_ready' | 'answering' | 'done' | 'done_history' | 'error_loading_answer' | 'error_loading_hints';
 
 // service hook
 export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
@@ -220,6 +220,8 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
     const [answer, setAnswer] = useState<string | null>(null);
 
     const [id, setId] = useState<string | null>(null);
+
+
 
     const getHints = useCallback(async () => {
         try {
@@ -251,7 +253,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
                     updateTitle(question);
                     setAnswer(response);
                     setId(id);
-                    setState("done");
+                    setState("done_history");
                 } catch (e) {
                     let error_message = "Failed to load history";
                     if (e instanceof Error) {
@@ -279,7 +281,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
                         updateTitle(question);
                         setAnswer(response);
                         setId(id);
-                        setState("done");
+                        setState("done_history");
                     } catch (e) {
                         let error_message = "Failed to load history";
                         if (e instanceof Error) {
