@@ -11,10 +11,11 @@ import {
 import { useState } from "react";
 import GitHubIcon from '@mui/icons-material/GitHub';
 import TelegramIcon from '@mui/icons-material/Telegram';
-import FacebookIcon from '@mui/icons-material/Facebook';
+import LinkedIn from '@mui/icons-material/LinkedIn';
 import WechatIcon from "../../images/icons/wechat";
 import { blue, green, grey } from "@mui/material/colors";
 import majoAvatar from "../../images/majo.png";
+import linkedinAvator from "../../images/linkedin.jpg";
 import telegramAvatar from "../../images/telegram.jpg";
 import wechatQRCode from "../../images/qr-code.svg";
 import { Email } from "@mui/icons-material";
@@ -27,7 +28,7 @@ interface Props {
 enum Status {
     Inactive,
     Github,
-    Facebook,
+    LinkedIn,
     Telegram,
     Wechat,
     Email
@@ -62,7 +63,7 @@ const LinkButton = ({ text, target, color }: { text: string, target: string, col
 
 const githubLink = "https://github.com/tsunrise"
 const telegramLink = "https://t.me/tsunrise"
-const facebookLink = "https://www.facebook.com/tomshen.h"
+const linkedinLink = "https://www.linkedin.com/in/conghao-shen/"
 
 function ContactContent(prop: contentProp) {
 
@@ -94,9 +95,9 @@ function ContactContent(prop: contentProp) {
     </CardRoot>
 
     const facebookContent = <CardRoot elevation={0}>
-        {makeCardHeader(majoAvatar, "Facebook Avatar", facebookLink, "Tom Shen", "@tomshen.h")}
+        {makeCardHeader(linkedinAvator, "LinkedIn Avatar", linkedinLink, "Conghao Shen", "MSCS @ Stanford")}
         <ButtonContainer>
-            <LinkButton text="View Profile" target={facebookLink} color="primary" />
+            <LinkButton text="View Profile" target={linkedinLink} color="primary" />
         </ButtonContainer>
     </CardRoot>
 
@@ -132,7 +133,7 @@ function ContactContent(prop: contentProp) {
         <Collapse in={prop.status === Status.Telegram} mountOnEnter unmountOnExit>
             {telegramContent}
         </Collapse>
-        <Collapse in={prop.status === Status.Facebook} mountOnEnter unmountOnExit>
+        <Collapse in={prop.status === Status.LinkedIn} mountOnEnter unmountOnExit>
             {facebookContent}
         </Collapse>
         <Collapse in={prop.status === Status.Wechat} mountOnEnter unmountOnExit>
@@ -184,11 +185,11 @@ export default function ContactGadget(prop: Props) {
             }}
                 aria-label="telegram"
             > <TelegramIcon /> </MyIconButton>
-            <MyIconButton activeStatus={contactState === Status.Facebook} activeColor={blue[900]} onClick={() => {
-                toggleContactState(Status.Facebook)
+            <MyIconButton activeStatus={contactState === Status.LinkedIn} activeColor={blue[900]} onClick={() => {
+                toggleContactState(Status.LinkedIn)
             }}
                 aria-label="facebook"
-            > <FacebookIcon /> </MyIconButton>
+            > <LinkedIn /> </MyIconButton>
             <MyIconButton activeStatus={contactState === Status.Wechat} activeColor={green[800]} onClick={() => {
                 toggleContactState(Status.Wechat)
             }}
