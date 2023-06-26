@@ -29,12 +29,25 @@ interface LookupHistoryResponse {
     timestamp: number;
 }
 
+interface FeedbackEntry {
+    feedback?: boolean;
+    comment?: string;
+}
+
+interface FeedbackUpdateRequest {
+    id: string;
+    secret: string;
+    feedback?: boolean;
+    comment?: string;
+}
 
 // TODO: put me in useEffect(..., []) instead of the component function to avoid re-creating the service on every render
 export interface SalieriBackend {
     getHints(): Promise<Hints>;
     subscribeToAnswer(question: string, token: string, onUpdate: (item: StreamItemDelta | StreamItemStop | StreamItemMeta) => void, onError: (e: Error) => void): void;
     getResponseHistory(id: string): Promise<LookupHistoryResponse>;
+    getFeedback(id: string, secret: string): Promise<FeedbackEntry>;
+    updateFeedback(req: FeedbackUpdateRequest): Promise<FeedbackEntry>;
 }
 
 // dummy service
@@ -90,6 +103,18 @@ export const DummySalieriBackend: SalieriBackend = {
             response: "Tom's hobby is programming. id=" + id,
             timestamp: 1234567890,
         };
+    },
+
+    getFeedback: async (id: string, secret: string) => {
+        await delay(1000);
+        return {}
+    },
+
+    updateFeedback: async (req: FeedbackUpdateRequest) => {
+        await delay(1000);
+        return {
+            ...req,
+        }
     }
 }
 
@@ -98,31 +123,20 @@ const SALIERI_API_ENDPOINT_ENV = process.env.REACT_APP_SALIERI_API_ENDPOINT;
 if (!SALIERI_API_ENDPOINT_ENV) {
     throw new Error("REACT_APP_SALIERI_API_ENDPOINT is not set");
 }
-const SALIERI_HINT_ENDPOINT = (() => {
-    const url = new URL(SALIERI_API_ENDPOINT_ENV);
+function createEndpointUrl(pathname: string, protocol: string = "http"): URL {
+    const url = new URL(SALIERI_API_ENDPOINT_ENV!);
+    url.protocol = url.protocol.replace("http", protocol);
     if (!url.pathname.endsWith("/")) {
         url.pathname += "/";
     }
-    url.pathname += "hint";
-    return url
-})();
-const SALIERI_CHAT_ENDPOINT = (() => {
-    const url = new URL(SALIERI_API_ENDPOINT_ENV);
-    url.protocol = url.protocol.replace("http", "ws");
-    if (!url.pathname.endsWith("/")) {
-        url.pathname += "/";
-    }
-    url.pathname += "chat";
-    return url
-})();
-const SALIERI_LOOKUP_ENDPOINT = (() => {
-    const url = new URL(SALIERI_API_ENDPOINT_ENV);
-    if (!url.pathname.endsWith("/")) {
-        url.pathname += "/";
-    }
-    url.pathname += "lookup";
-    return url
-})();
+    url.pathname += pathname;
+    return url;
+}
+
+const SALIERI_HINT_ENDPOINT = createEndpointUrl("hint");
+const SALIERI_CHAT_ENDPOINT = createEndpointUrl("chat", "ws");
+const SALIERI_LOOKUP_ENDPOINT = createEndpointUrl("lookup");
+const SALIERI_FEEDBACK_ENDPOINT = createEndpointUrl("feedback");
 
 
 export const SalieriAPIBackend: SalieriBackend = {
@@ -187,13 +201,44 @@ export const SalieriAPIBackend: SalieriBackend = {
     },
 
     getResponseHistory: async (id: string) => {
-        const response = await fetch(SALIERI_LOOKUP_ENDPOINT + "?id=" + id);
+        // const response = await fetch(SALIERI_LOOKUP_ENDPOINT + "?id=" + id);
+        const response = await fetch(SALIERI_LOOKUP_ENDPOINT);
         if (response.ok) {
             const resp = await response.json(); // a single lookupHistoryResponse
             if (resp.question && resp.response && resp.timestamp) {
                 return resp;
             }
             throw new Error("Invalid response: " + JSON.stringify(resp));
+        }
+        const { error } = await response.json();
+        throw new Error(error);
+    },
+
+    getFeedback: async (id: string, secret: string) => {
+        const response = await fetch(SALIERI_FEEDBACK_ENDPOINT + "?id=" + id, {
+            headers: {
+                "Authorization": "Bearer " + secret
+            }
+        });
+        if (response.ok) {
+            const resp = await response.json();
+            return resp;
+        }
+        const { error } = await response.json();
+        throw new Error(error);
+    },
+
+    updateFeedback: async (req: FeedbackUpdateRequest) => {
+        const response = await fetch(SALIERI_FEEDBACK_ENDPOINT, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(req),
+        });
+        if (response.ok) {
+            const resp = await response.json();
+            return resp;
         }
         const { error } = await response.json();
         throw new Error(error);
@@ -216,11 +261,16 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
     const [error, setError] = useState<string | null>(null);
     const [warning, setWarning] = useState<string | null>(null);
     const [hints, setHints] = useState<Hints | null>(null);
+
     const [question, setQuestion] = useState<string | null>(null);
     const [answer, setAnswer] = useState<string | null>(null);
+    const [timestamp, setTimestamp] = useState<number | null>(null);
 
     const [id, setId] = useState<string | null>(null);
 
+    const [secret, setSecret] = useState<string | null>(null); // invariant: is string iff state is `done`
+    const [feedback, setFeedback] = useState<boolean | null>(null); // invariant: is boolean iff secret is not null
+    const [comment, setComment] = useState<string | null>(null); // invariant: is string iff secret is not null
 
 
     const getHints = useCallback(async () => {
@@ -253,6 +303,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
                     updateTitle(question);
                     setAnswer(response);
                     setId(id);
+                    setTimestamp(timestamp);
                     setState("done_history");
                 } catch (e) {
                     let error_message = "Failed to load history";
@@ -281,6 +332,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
                         updateTitle(question);
                         setAnswer(response);
                         setId(id);
+                        setTimestamp(timestamp);
                         setState("done_history");
                     } catch (e) {
                         let error_message = "Failed to load history";
@@ -385,6 +437,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
         hints,
         question,
         answer,
+        timestamp,
         ask,
         reset
     };
