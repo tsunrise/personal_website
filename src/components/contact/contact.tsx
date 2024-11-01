@@ -142,10 +142,6 @@ function ContactContent(prop: contentProp) {
         <Collapse in={prop.status === Status.Email} mountOnEnter unmountOnExit>
             {emailContent}
         </Collapse>
-        <ButtonContainer>
-            <LinkButton text="Resume" target="/resume.pdf" color="secondary" />
-            <ActionButton text="Email" action={() => prop.toggleStatus(Status.Email)} color="secondary" />
-        </ButtonContainer>
 
     </Grid>
 }
