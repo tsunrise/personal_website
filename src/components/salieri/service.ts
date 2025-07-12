@@ -92,7 +92,7 @@ export const DummySalieriBackend: SalieriBackend = {
 }
 
 // real service
-const SALIERI_API_ENDPOINT_ENV = process.env.REACT_APP_SALIERI_API_ENDPOINT;
+const SALIERI_API_ENDPOINT_ENV = process.env.REACT_APP_SALIERI_API_ENDPOINT || "https://tomshen.io/api/salieri";
 if (!SALIERI_API_ENDPOINT_ENV) {
     throw new Error("REACT_APP_SALIERI_API_ENDPOINT is not set");
 }
