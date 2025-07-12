@@ -1,4 +1,4 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, Grid, List, ListItemIcon, ListItem, ListItemText, IconButton, Snackbar, Tooltip } from "@mui/material"
+import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, GridLegacy as Grid, List, ListItemIcon, ListItem, ListItemText, IconButton, Snackbar, Tooltip } from "@mui/material"
 import { blue, grey } from "@mui/material/colors"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReplayIcon from '@mui/icons-material/Replay';
@@ -6,8 +6,7 @@ import SendIcon from '@mui/icons-material/Send';
 import BoltIcon from '@mui/icons-material/Bolt';
 import LinkIcon from '@mui/icons-material/Link';
 import IosShareIcon from '@mui/icons-material/IosShare';
-import CloseIcon from '@mui/icons-material/Close';
-import { DummySalieriBackend, SalieriAPIBackend, useSalieri } from "./service";
+import { SalieriAPIBackend, useSalieri } from "./service";
 import AttributionIcon from '@mui/icons-material/Attribution';
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import { styled } from "@mui/system";
@@ -513,7 +512,7 @@ export const Salieri = () => {
                 ...wrap,
             }}
             >
-                {navigator.share != undefined &&
+                {navigator.share !== undefined &&
                     <Grow in={service.state !== "answering"} timeout={800}>
                         <Tooltip title="Share">
                             <IconButton color="secondary" onClick={() => {

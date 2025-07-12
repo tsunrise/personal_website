@@ -1,6 +1,6 @@
 Privacy Policy for Conghao Shen's Personal Website (tomshen.io)
 
-Last updated: 2023-04-01
+Last updated: 2025-07-12
 
 At tomshen.io, your privacy is of utmost importance to us. This Privacy Policy outlines the types of personal information that is collected and recorded by tomshen.io and how we use it, in compliance with the General Data Protection Regulation (GDPR). By using our website, you hereby consent to our Privacy Policy and agree to its terms.
 
@@ -23,7 +23,7 @@ tomshen.io may use cookies to store information about visitors' preferences and 
 
 4. Chatbot Interaction - the Salieri System
 
-When you interact with our chatbot, the Salieri System, on tomshen.io, we may retain your conversation data for a period of 1 year to improve the chat experience. By using the Salieri System, you consent to the collection and processing of the conversation data for these purposes.
+When you interact with our chatbot, the Salieri System, on tomshen.io, we may retain your conversation data to improve the chat experience. By using the Salieri System, you consent to the collection and processing of the conversation data for these purposes.
 
 5. Third-Party Services
 

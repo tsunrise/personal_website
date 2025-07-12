@@ -1,6 +1,4 @@
-import { stat } from "fs";
 import { useCallback, useEffect, useRef, useState } from "react";
-import internal from "stream";
 
 interface Hints {
     welcome: string;
@@ -94,7 +92,7 @@ export const DummySalieriBackend: SalieriBackend = {
 }
 
 // real service
-const SALIERI_API_ENDPOINT_ENV = process.env.REACT_APP_SALIERI_API_ENDPOINT;
+const SALIERI_API_ENDPOINT_ENV = process.env.REACT_APP_SALIERI_API_ENDPOINT || "https://tomshen.io/api/salieri";
 if (!SALIERI_API_ENDPOINT_ENV) {
     throw new Error("REACT_APP_SALIERI_API_ENDPOINT is not set");
 }
@@ -219,6 +217,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
     const [question, setQuestion] = useState<string | null>(null);
     const [answer, setAnswer] = useState<string | null>(null);
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [id, setId] = useState<string | null>(null);
 
 
@@ -248,7 +247,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
                 try {
                     const hints = await backend.getHints();
                     setHints(hints);
-                    const { question, response, timestamp } = await backend.getResponseHistory(id);
+                    const { question, response } = await backend.getResponseHistory(id);
                     setQuestion(question);
                     updateTitle(question);
                     setAnswer(response);
@@ -267,7 +266,23 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
         } else {
             getHints();
         }
-    }, []);
+    }, [backend, getHints, setState]);
+
+    const reset = useCallback((no_push?: boolean) => {
+        onReset();
+        setState("initializing");
+        setError(null);
+        setWarning(null);
+        setHints(null);
+        setQuestion(null);
+        setAnswer(null);
+        setId(null);
+        if (!no_push) {
+            window.history.pushState({}, "", "/");
+        }
+        updateTitle(null);
+        getHints();
+    }, [onReset, setState, getHints])
 
     // history load: from pop state
     useEffect(() => {
@@ -276,7 +291,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
                 const id = window.location.pathname.substring("/history/".length);
                 (async () => {
                     try {
-                        const { question, response, timestamp } = await backend.getResponseHistory(id);
+                        const { question, response } = await backend.getResponseHistory(id);
                         setQuestion(question);
                         updateTitle(question);
                         setAnswer(response);
@@ -300,7 +315,7 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
         return () => {
             window.removeEventListener("popstate", onPopState);
         }
-    }, [backend, setState]);
+    }, [backend, setState, reset]);
 
     const updateTitle = (question: string | null) => {
         if (question !== null) {
@@ -360,22 +375,6 @@ export const useSalieri = (backend: SalieriBackend, onReset: () => void) => {
         }
 
     }, [backend, state, handleError, setId, setState])
-
-    const reset = (no_push?: boolean) => {
-        onReset();
-        setState("initializing");
-        setError(null);
-        setWarning(null);
-        setHints(null);
-        setQuestion(null);
-        setAnswer(null);
-        setId(null);
-        if (!no_push) {
-            window.history.pushState({}, "", "/");
-        }
-        updateTitle(null);
-        getHints();
-    }
 
 
     return {

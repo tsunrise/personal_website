@@ -5,7 +5,7 @@ import {
     CardContent,
     CardHeader,
     Collapse,
-    Grid,
+    GridLegacy as Grid,
     IconButton,
 } from "@mui/material";
 import { useState } from "react";
