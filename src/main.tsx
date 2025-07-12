@@ -1,7 +1,7 @@
 //! defines the website layout
 
 import { useEffect, useState } from "react";
-import { AppBar, Divider, Grid, Hidden, Link, Toolbar, Typography } from "@mui/material";
+import { AppBar, Divider, GridLegacy as Grid, Link, Toolbar, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import Heading from "./components/heading";
 import ContactGadget from "./components/contact/contact";
@@ -72,10 +72,8 @@ export default function MainGrid() {
                     marginRight: { xs: 1, md: 0 },
                 }} justifyContent="space-between">
                     <Grid item container direction="column">
-                        <MainItemGrid item>
-                            <Hidden mdUp>
-                                <ContactGadget />
-                            </Hidden>
+                        <MainItemGrid item sx={{ display: { xs: 'block', md: 'none' } }}>
+                            <ContactGadget />
                         </MainItemGrid>
 
                         {/*Main Content Naive Placeholder*/}
