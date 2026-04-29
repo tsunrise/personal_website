@@ -1,331 +1,252 @@
-import { Box, TextField, Typography, Button, Collapse, Grow, LinearProgress, CircularProgress, Alert, Link, GridLegacy as Grid, List, ListItemIcon, ListItem, ListItemText, IconButton, Snackbar, Tooltip } from "@mui/material"
-import { blue, grey } from "@mui/material/colors"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import ReplayIcon from '@mui/icons-material/Replay';
-import SendIcon from '@mui/icons-material/Send';
-import BoltIcon from '@mui/icons-material/Bolt';
-import LinkIcon from '@mui/icons-material/Link';
-import IosShareIcon from '@mui/icons-material/IosShare';
-import { SalieriAPIBackend, useSalieri } from "./service";
-import AttributionIcon from '@mui/icons-material/Attribution';
-import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
-import { styled } from "@mui/system";
+import { Alert, Collapse, LinearProgress, Snackbar } from "@mui/material";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReplayIcon from "@mui/icons-material/Replay";
+import LinkIcon from "@mui/icons-material/Link";
+import IosShareIcon from "@mui/icons-material/IosShare";
 import { Turnstile, TurnstileInstance } from "@marsidev/react-turnstile";
-import "./loading.css"
+import { SalieriAPIBackend, useSalieri } from "./service";
+import "./loading.css";
 
 const cf_turnstile_keys = {
-    "always_passes_visible": "1x00000000000000000000AA",
-    "always_blocks_visible": "2x00000000000000000000AB",
-    "always_passes_invisible": "1x00000000000000000000BB",
-    "always_blocks_invisible": "2x00000000000000000000BB",
-    "force_interactive_challenge": "3x00000000000000000000FF",
-    "tomshen_io": "0x4AAAAAAADKETLTiaTObZqk"
+    tomshen_io: "0x4AAAAAAADKETLTiaTObZqk"
+};
+
+const MAX_QUESTION_LENGTH = 300;
+
+function SpeakerLabel(props: { speaker: string; tone?: "tom" | "user" }) {
+    return <div className={`message__label ${props.tone === "tom" ? "message__label--tom" : ""}`}>{props.speaker}</div>;
 }
 
-
-const SpeakerTypography = (prop: { speaker: string }) => {
-    return <Typography variant="h6" sx={{
-        fontWeight: 600,
-        textTransform: "uppercase",
-        fontSize: 17,
-        fontFamily: "Source Sans Pro",
-        color: grey[700],
-    }}>{prop.speaker}</Typography>
+function Message(props: { speaker: string; text: string; tone?: "tom" | "user" }) {
+    return (
+        <div className={`message ${props.tone === "tom" ? "message--tom" : "message--user"}`}>
+            <SpeakerLabel speaker={props.speaker} tone={props.tone} />
+            <p className="message__body">{props.text}</p>
+        </div>
+    );
 }
 
-
-const wrap = {
-    marginLeft: 2,
-    marginRight: 2,
-    marginTop: 1,
-    marginBottom: 1,
+function RetroAlert(props: { severity: "info" | "warning" | "error"; children: ReactNode }) {
+    return (
+        <Alert className={`retro-alert retro-alert--${props.severity}`} severity={props.severity}>
+            {props.children}
+        </Alert>
+    );
 }
 
-const WrapAlert = styled(Alert)(({ theme }) => ({
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    marginBottom: theme.spacing(1),
-}))
-
-const Message = (prop: { speaker: string, text: string }) => {
-
-    return <Box>
-        <SpeakerTypography speaker={prop.speaker} />
-        <Typography variant="body1" sx={{
-            fontWeight: 400,
-            textTransform: "none",
-            wordBreak: "break-word",
-            ...wrap,
-        }}
-            whiteSpace="pre-wrap"
-        >{prop.text}</Typography>
-    </Box>
-}
-
-const InputBox = (props: {
-    question: string,
-    setQuestion: (question: string) => void,
-    suggested_questions: string[],
-    captcha_token: string | null,
-    set_captcha_token: (token: string | null) => void,
-    submit: () => void,
-    max_length: number,
-    disabled?: boolean
-}) => {
-
-    const inputIsEmpty = props.question === ""
-    const lengthRatio = Math.min(props.question.length / props.max_length, 1)
-    const lengthExceeded = props.question.length > props.max_length
+function InputBox(props: {
+    question: string;
+    setQuestion: (question: string) => void;
+    suggested_questions: string[];
+    captcha_token: string | null;
+    set_captcha_token: (token: string | null) => void;
+    submit: () => void;
+    disabled?: boolean;
+}) {
+    const inputIsEmpty = props.question.length === 0;
+    const trimmedIsEmpty = props.question.trim().length === 0;
+    const lengthRatio = Math.min(props.question.length / MAX_QUESTION_LENGTH, 1);
+    const lengthExceeded = props.question.length > MAX_QUESTION_LENGTH;
     const displayProgress = lengthRatio > 0.8 && !lengthExceeded;
-
     const [captchaError, setCaptchaError] = useState(false);
+    const captchaRef = useRef<TurnstileInstance>();
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    const askButtonRef = useRef<HTMLButtonElement>(null);
+    const askGlowFrameRef = useRef<number | null>(null);
+    const askGlowPointRef = useRef({ x: "50%", y: "50%" });
 
-    const captcha_ref = useRef<TurnstileInstance>();
     const getTokens = useCallback(() => {
-        if (captcha_ref.current) {
-            const resp = captcha_ref.current.getResponse();
-            if (resp) {
-                return resp;
-            }
-        }
-        return null;
-    }, [captcha_ref])
+        return captchaRef.current?.getResponse() || null;
+    }, []);
 
     useEffect(() => {
         if (props.captcha_token === null) {
-            captcha_ref.current?.reset();
+            captchaRef.current?.reset();
         }
-    }, [props.captcha_token])
+    }, [props.captcha_token]);
 
+    useEffect(() => {
+        const input = inputRef.current;
+        if (!input) {
+            return;
+        }
+        input.style.height = "0px";
+        input.style.height = `${input.scrollHeight}px`;
+    }, [props.question]);
 
-    return <Box>
-        <SpeakerTypography speaker="you" />
-        <Box sx={{
-            ...wrap,
-        }}>
-            <TextField
-                multiline
-                minRows={2}
-                maxRows={6}
-                sx={{
-                    width: "100%",
+    useEffect(() => {
+        return () => {
+            if (askGlowFrameRef.current !== null) {
+                window.cancelAnimationFrame(askGlowFrameRef.current);
+            }
+        };
+    }, []);
+
+    const updateAskGlow = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        askGlowPointRef.current = {
+            x: `${event.clientX - rect.left}px`,
+            y: `${event.clientY - rect.top}px`
+        };
+
+        if (askGlowFrameRef.current !== null) {
+            return;
+        }
+
+        askGlowFrameRef.current = window.requestAnimationFrame(() => {
+            askButtonRef.current?.style.setProperty("--ask-x", askGlowPointRef.current.x);
+            askButtonRef.current?.style.setProperty("--ask-y", askGlowPointRef.current.y);
+            askGlowFrameRef.current = null;
+        });
+    }, []);
+
+    return (
+        <div className="ask-block">
+            <form
+                className="ask-form"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!lengthExceeded && !trimmedIsEmpty && props.captcha_token !== null) {
+                        props.submit();
+                    }
                 }}
-                label="Ask anything!"
-                variant="outlined"
-                value={props.question}
-                onChange={(event) => {
-                    props.setQuestion(event.target.value)
-                }}
-                error={props.question.length > props.max_length}
-                disabled={props.disabled}
-                aria-label="Message Input Box to Salieri"
-            />
+            >
+                <SpeakerLabel speaker="YOU" tone="user" />
+                <textarea
+                    ref={inputRef}
+                    className="ask-form__input"
+                    aria-label="Message Input Box to Salieri"
+                    placeholder="Ask anything..."
+                    rows={2}
+                    maxLength={MAX_QUESTION_LENGTH + 40}
+                    value={props.question}
+                    disabled={props.disabled}
+                    onChange={(event) => props.setQuestion(event.target.value)}
+                />
+                <button
+                    ref={askButtonRef}
+                    className="ask-form__button"
+                    type="submit"
+                    disabled={lengthExceeded || trimmedIsEmpty || props.captcha_token === null || props.disabled}
+                    onPointerMove={updateAskGlow}
+                >
+                    ASK
+                </button>
+            </form>
+
             <Collapse in={displayProgress}>
-                <Grow in={displayProgress} timeout={400}>
-                    <LinearProgress variant="determinate" value={lengthRatio * 100} sx={{
-                        height: 2,
-                        display: displayProgress ? "block" : "none",
-                        marginTop: 0.5,
-                    }} />
-                </Grow>
-            </Collapse>
-        </Box>
-
-
-        <Collapse in={!inputIsEmpty}>
-            {/* Alerts */}
-            <Collapse in={lengthExceeded}>
-                <Grow in={lengthExceeded} timeout={400}>
-                    <WrapAlert severity="error" >
-                        Your question is too long. ({props.question.length}/{props.max_length})
-                    </WrapAlert>
-                </Grow>
+                <LinearProgress className="length-progress" variant="determinate" value={lengthRatio * 100} />
             </Collapse>
 
-            <Collapse in={captchaError}>
-                <Grow in={captchaError} timeout={400}>
-
-                    <WrapAlert severity="error">
-                        Salieri can only answer questions from humans, and is unable to verify that you are one.
-                    </WrapAlert>
-
-                </Grow>
-            </Collapse>
-
-            {/* Captchas */}
-            <Collapse in={(props.captcha_token === null) && (!captchaError)}>
-                <Box sx={{
-                    ...wrap,
-                }}>
-                    <Turnstile siteKey={cf_turnstile_keys.tomshen_io}
-                        options={{
-                            theme: "light",
-                            appearance: "always"
-                        }}
-                        onSuccess={() => { props.set_captcha_token(getTokens()); setCaptchaError(false) }}
-                        onError={() => { props.set_captcha_token(null); setCaptchaError(true) }}
-                        onExpire={() => { props.set_captcha_token(null); setCaptchaError(false) }}
-                        ref={captcha_ref}></Turnstile>
-                    <Link sx={{
-                        fontSize: 12,
-                        color: grey[500]
-                    }}
-                        component="button"
-                        variant="body2"
-                        onClick={() => {
-                            captcha_ref.current?.reset();
-                        }}
-                    >
-                        Cannot see the captcha?
-                    </Link>
-                </Box>
-            </Collapse>
-
-            <Box sx={{
-                display: "flex",
-                justifyContent: "flex-end",
-                ...wrap,
-            }}>
-                <Grow in={!inputIsEmpty} timeout={400}>
-                    <Button variant="outlined" startIcon={<ReplayIcon />} color="secondary"
-                        onClick={() => {
-                            props.setQuestion("")
-                        }}
-                    >
-                        Start Over
-                    </Button>
-                </Grow>
-                <Grow in={(!inputIsEmpty)} timeout={800}>
-                    <Button variant="contained" endIcon={<SendIcon />} color="primary" sx={{
-                        marginLeft: 1,
-                    }}
-                        onClick={() => {
-                            props.submit()
-                        }}
-                        disabled={lengthExceeded || props.captcha_token === null}
-                    >
-                        Send
-                    </Button>
-                </Grow>
-                {captchaError &&
-                    <Button variant="contained" endIcon={<BoltIcon />} color="error" sx={{
-                        marginLeft: 1,
-                    }}
-                        onClick={() => {
-                            setCaptchaError(false);
-                            captcha_ref.current?.reset();
-                        }}
-                    >
-                        retry
-                    </Button>
-                }
-            </Box>
-        </Collapse>
-        <Collapse in={inputIsEmpty}>
-            <Box sx={{
-                ...wrap,
-            }}>
-                {/* Show a list of buttons with 100% width, and each button displays a suggested question. Put text in middle.*/}
-                {props.suggested_questions.map((question, index) => {
-                    return <Grow key={index} in={inputIsEmpty} timeout={(index + 1) * 400}>
-                        <Box sx={{
-                            width: "100%",
-                            marginBottom: 1,
-                        }}>
-                            <Button variant="outlined" sx={{
-                                width: "100%",
-                                textTransform: "none",
-                                fontWeight: 400,
-                                fontSize: 16,
-                                fontFamily: "Source Sans Pro",
-                                color: blue[700],
-                            }}
-                                onClick={() => {
-                                    props.setQuestion(question)
+            {!inputIsEmpty && (
+                <div className="captcha-zone">
+                    {lengthExceeded && (
+                        <RetroAlert severity="error">
+                            Your question is too long. ({props.question.length}/{MAX_QUESTION_LENGTH})
+                        </RetroAlert>
+                    )}
+                    {captchaError && (
+                        <RetroAlert severity="error">
+                            Salieri can only answer questions from humans, and is unable to verify that you are one.
+                        </RetroAlert>
+                    )}
+                    {props.captcha_token === null && !captchaError && (
+                        <div className="turnstile-shell">
+                            <Turnstile
+                                siteKey={cf_turnstile_keys.tomshen_io}
+                                options={{
+                                    theme: "dark",
+                                    appearance: "always"
                                 }}
-                            >{question}</Button>
-                        </Box>
-                    </Grow>
+                                onSuccess={(token) => {
+                                    props.set_captcha_token(token || getTokens());
+                                    setCaptchaError(false);
+                                }}
+                                onError={() => {
+                                    props.set_captcha_token(null);
+                                    setCaptchaError(true);
+                                }}
+                                onExpire={() => {
+                                    props.set_captcha_token(null);
+                                    setCaptchaError(false);
+                                }}
+                                ref={captchaRef}
+                            />
+                            <button
+                                className="text-command"
+                                type="button"
+                                onClick={() => {
+                                    captchaRef.current?.reset();
+                                }}
+                            >
+                                Cannot see the captcha?
+                            </button>
+                        </div>
+                    )}
+                    <div className="ask-actions">
+                        <button className="secondary-command secondary-command--blue" type="button" onClick={() => props.setQuestion("")}>
+                            <ReplayIcon /> START OVER
+                        </button>
+                        {captchaError && (
+                            <button
+                                className="secondary-command secondary-command--hot"
+                                type="button"
+                                onClick={() => {
+                                    setCaptchaError(false);
+                                    captchaRef.current?.reset();
+                                }}
+                            >
+                                RETRY
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
-                })}
-            </Box>
-        </Collapse>
-    </Box>
+            {inputIsEmpty && props.suggested_questions.length > 0 && (
+                <div className="prompt-grid">
+                    {props.suggested_questions.map((question, index) => (
+                        <button className="prompt-card" type="button" key={question} onClick={() => props.setQuestion(question)}>
+                            <span className="prompt-card__icon">{String(index + 1).padStart(2, "0")}</span>
+                            <span>{question}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 }
 
-const ResponseBox = (props: { answering: boolean, answer: string, warning?: string, onStartOver: () => void }) => {
-    return <Box>
-        <Message speaker='"Tom"' text={props.answer} />
-        {/* Make middle */}
-        <Box sx={{
-            display: props.answering ? "flex" : "none",
-            justifyContent: "center",
-            alignItems: "center",
-            marginTop: 1,
-            marginBottom: 1,
-        }}>
-            <div className="dot-flashing"></div>
-        </Box>
-
-    </Box>
+function ResponseBox(props: { answering: boolean; answer: string }) {
+    return (
+        <>
+            <Message speaker="TOM" text={props.answer} tone="tom" />
+            {props.answering && (
+                <div className="terminal-loader" aria-label="Salieri is answering">
+                    <div className="dot-flashing" />
+                </div>
+            )}
+        </>
+    );
 }
-
-const IntroListItem = (props: {
-    icon: React.ReactElement,
-    children: React.ReactNode
-}) => {
-    return <ListItem sx={{
-        padding: 0,
-        justifyContent: {
-            xs: "center",
-        }
-    }}>
-        <ListItemIcon sx={{
-            minWidth: 0,
-            marginRight: 1,
-        }}>
-            {props.icon}
-        </ListItemIcon>
-        <ListItemText sx={{
-            fontSize: {
-                xs: 14,
-                sm: 16,
-            },
-            fontWeight: 400,
-            fontFamily: "Source Sans Pro",
-            color: grey[800],
-            marginRight: 1,
-        }}>
-            {props.children}
-        </ListItemText>
-    </ListItem>
-}
-
 
 export const Salieri = () => {
-    // initialize Salieri Service
-
-    const [userQuestion, setUserQuestion] = useState("")
-    const backend = useMemo(() => SalieriAPIBackend, [])
-    // const backend = useMemo(() => DummySalieriBackend, [])
-    // captcha
+    const [userQuestion, setUserQuestion] = useState("");
+    const backend = useMemo(() => SalieriAPIBackend, []);
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+    const [reportAbuseActive, setReportAbuseActive] = useState(false);
 
-    const reset_handler = useCallback(() => {
+    const resetHandler = useCallback(() => {
         setUserQuestion("");
         setCaptchaToken(null);
         setReportAbuseActive(false);
-    }, [])
-    const service = useSalieri(backend, reset_handler)
+    }, []);
 
-
-    const suggested_questions = (service.hints == null) ? [] : service.hints.suggested_questions
-    const welcome_text = (service.hints == null) ? "" : service.hints.welcome
-    const announcement = (service.hints == null) ? null : service.hints.announcement
-
-    const [reportAbuseActive, setReportAbuseActive] = useState<boolean>(false);
-
-    const reset = service.reset;
+    const service = useSalieri(backend, resetHandler);
+    const suggestedQuestions = service.hints?.suggested_questions ?? [];
+    const welcomeText = service.hints?.welcome ?? "";
+    const announcement = service.hints?.announcement ?? null;
 
     const [notifMsg, setNotifMsg] = useState<string | null>(null);
     const [notifOpen, setNotifOpen] = useState(false);
@@ -335,222 +256,128 @@ export const Salieri = () => {
         setNotifMsg(msg);
         setNotifSuccessStatus(success);
         setNotifOpen(true);
-    }, [])
+    }, []);
 
     const handleCopyLink = useCallback(() => {
         navigator.clipboard.writeText(window.location.href).then(() => {
             displayNotif("Link copied to clipboard", true);
         }).catch(() => {
             displayNotif("Failed to copy link", false);
-        }
-        )
-    }, [displayNotif])
+        });
+    }, [displayNotif]);
 
     const handleShare = useCallback(() => {
         if (navigator.share) {
             navigator.share({
-                title: 'Salieri System by Tom Shen',
+                title: "Salieri System by Tom Shen",
                 text: service.question ?? "",
-                url: window.location.href,
-            })
-                .then(() => console.log('Successful share'))
-                .catch((error) => console.log('Error sharing', error));
+                url: window.location.href
+            }).catch((error) => console.log("Error sharing", error));
         } else {
             navigator.clipboard.writeText(window.location.href).then(() => {
                 displayNotif("Your browser does not support sharing. Link copied to clipboard", true);
             }).catch(() => {
                 displayNotif("Failed to copy link", false);
-            })
+            });
         }
-    }, [service.question, displayNotif])
+    }, [service.question, displayNotif]);
 
-    return <Box>
-        {
-            service.state === "initializing" &&
-            <Box sx={{
-                display: 'flex', justifyContent: "center"
-            }}>
-                <CircularProgress />
-            </Box>
-        }
+    const canShowContent = service.state === "hint_ready" ||
+        service.state === "answering" ||
+        service.state === "done" ||
+        service.state === "done_history" ||
+        service.state === "error_loading_answer";
 
-        {
-            // welcome
-            (service.state === "hint_ready" || service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer")
-            &&
-            <>
-                <Box>
-                    <Grid container spacing={2}>
-                        <Grid item xs={4} md={6}>
-                            {/* Show a text logo: Salieri System, with foot text aligned to the right: by Tom Shen */}
-                            <Typography variant="h4" sx={{
-                                fontWeight: 700,
-                                fontFamily: "Source Sans Pro",
-                                color: blue[700],
-                                textAlign: "right",
-                                fontSize: {
-                                    xs: 16,
-                                    sm: 24,
-                                    md: 32,
-                                }
-                            }}>
-                                Salieri System
-                            </Typography>
-                            <Typography variant="body2" sx={{
-                                fontWeight: 400,
-                                fontFamily: "Source Sans Pro",
-                                color: grey[700],
-                                textAlign: "right",
-                                fontSize: {
-                                    xs: 12,
-                                    sm: 16,
-                                }
-                            }}>
-                                by Tom Shen
-                            </Typography>
-                        </Grid>
+    return (
+        <section className="terminal" aria-label="Salieri System">
+            <div className="terminal__bar">
+                <div className="terminal__brand">
+                    <span className="terminal__star" aria-hidden="true">{">_"}</span>
+                    <span>SALIERI SYSTEM</span>
+                </div>
+            </div>
 
-                        <Grid item xs={8} md={6} sx={{
-                        }}>
-                            <List dense sx={{
-                                marginTop: 0,
-                                paddingTop: {
-                                    xs: 0,
-                                    sm: 1
-                                },
-                            }}>
-                                <IntroListItem icon={<AttributionIcon sx={{
-                                    color: grey[800],
-                                    // fontSize: 16
-                                }} />}>
-                                    A lossy copy of the real Tom.
-                                </IntroListItem>
-                                <IntroListItem icon={<ReportProblemOutlinedIcon sx={{
-                                    color: grey[800],
-                                }} />}>
-                                    May <Link href="https://en.wikipedia.org/wiki/Hallucination_(artificial_intelligence)" target="_blank" rel="noreferrer" color="inherit"
-                                    >confidently</Link> produce incorrect answer.
-                                </IntroListItem>
-                            </List>
-                        </Grid>
-                    </Grid>
-                    {service.state === "done_history" &&
+            {service.state === "initializing" && (
+                <div className="terminal-loader terminal-loader--initial">
+                    <div className="dot-flashing" />
+                </div>
+            )}
+
+            {canShowContent && (
+                <div className="transcript">
+                    {service.state === "done_history" && (
                         <>
-                            <WrapAlert severity="info">
-                                <b>This is a past conversation.</b> The content is unmoderated and could potentially include offensive material. The answer may also be outdated.
-                                <Link sx={{ cursor: "pointer", marginLeft: 1 }} target="_blank" rel="noreferrer" variant="body2" onClick={() => { setReportAbuseActive(true) }}>
+                            <RetroAlert severity="info">
+                                <b>This is a past conversation.</b> The content is unmoderated and could include offensive material. The answer may also be outdated.{" "}
+                                <button className="inline-command" type="button" onClick={() => setReportAbuseActive(true)}>
                                     Report Abuse
-                                </Link>
-                            </WrapAlert>
-                            {reportAbuseActive &&
-                                <WrapAlert severity="info">
-                                    <Box>
-                                        <b>Report Abuse: </b>
-                                        <Link target="_blank" rel="noreferrer" variant="body2" href="https://forms.gle/QiCrtnxwzMxGLUYd8">via Google Form</Link>
-                                        <Link target="_blank" rel="noreferrer" variant="body2" href="mailto:dh5ek61f4@mozmail.com" sx={{ marginLeft: 1 }}>via Email</Link>
-                                    </Box>
-                                </WrapAlert>
-                            }
+                                </button>
+                            </RetroAlert>
+                            {reportAbuseActive && (
+                                <RetroAlert severity="info">
+                                    <b>Report Abuse: </b>
+                                    <a className="inline-link" target="_blank" rel="noreferrer" href="https://forms.gle/QiCrtnxwzMxGLUYd8">via Google Form</a>
+                                    <a className="inline-link" target="_blank" rel="noreferrer" href="mailto:dh5ek61f4@mozmail.com">via Email</a>
+                                </RetroAlert>
+                            )}
                         </>
+                    )}
 
-                    }
-                </Box>
-                {
-                    (service.state === "hint_ready") && (announcement != null) && <WrapAlert severity="info">
-                        {announcement}
-                    </WrapAlert>
-                }
-                <Message speaker='"Tom"' text={welcome_text} />
-            </>
-        }
+                    {service.state === "hint_ready" && announcement !== null && (
+                        <RetroAlert severity="info">{announcement}</RetroAlert>
+                    )}
 
-        {
-            (service.state === "hint_ready") &&
-            <InputBox
-                question={userQuestion}
-                setQuestion={setUserQuestion}
-                captcha_token={captchaToken}
-                set_captcha_token={setCaptchaToken}
-                suggested_questions={suggested_questions}
-                submit={() => { if (captchaToken != null) { service.ask(userQuestion, captchaToken) } }}
-                max_length={300} // TODO: enforce max length in backend
-            />
-        }
-        {
-            // User Question
-            (service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer") &&
-            <Message speaker={
-                service.state === "done_history" ? "\"You\"" : "You"
-            } text={service.question ?? ""} />
-        }
-        {
-            // Salieri Response
-            (service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer") && service.answer != null &&
-            <ResponseBox answering={service.state === "answering"} answer={service.answer} onStartOver={() => { reset() }} />
-        }
-        {
-            // Salieri Warning
-            (service.warning != null) &&
-            <WrapAlert severity="warning">
-                {service.warning}
-            </WrapAlert>
-        }
-        {
-            // Salieri Error
-            (service.error != null) &&
-            <WrapAlert severity="error">
-                {service.error}
-            </WrapAlert>
+                    <Message speaker="TOM" text={welcomeText} tone="tom" />
+                </div>
+            )}
 
-        }
-        {
-            // Actions
-            (service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer" || service.state === "error_loading_hints") &&
-            <Box sx={{
-                display: "flex",
-                justifyContent: "flex-end",
-                ...wrap,
-            }}
-            >
-                {navigator.share !== undefined &&
-                    <Grow in={service.state !== "answering"} timeout={800}>
-                        <Tooltip title="Share">
-                            <IconButton color="secondary" onClick={() => {
-                                handleShare()
-                            }}>
-                                <IosShareIcon />
-                            </IconButton>
-                        </Tooltip>
-                    </Grow>}
-                <Grow in={service.state !== "answering"} timeout={800}>
-                    <Tooltip title="Copy link">
-                        <IconButton color="secondary" sx={{
-                            marginRight: 1
-                        }} onClick={() => {
-                            handleCopyLink()
-                        }}>
-                            <LinkIcon />
-                        </IconButton>
-                    </Tooltip>
-                </Grow>
-                <Grow in={service.state !== "answering"} timeout={400}>
-                    <Button variant="outlined" startIcon={<ReplayIcon />} color="secondary"
-                        onClick={() => {
-                            reset()
-                        }}
-                    >
-                        Start Over
-                    </Button>
-                </Grow>
-                <Snackbar open={notifOpen} autoHideDuration={3000} onClose={() => { setNotifOpen(false) }} >
-                    <Alert onClose={() => { setNotifOpen(false) }} severity={notifSuccessStatus ? "success" : "error"} sx={{ width: '100%' }}>
-                        {notifMsg}
-                    </Alert>
-                </Snackbar>
-            </Box>
+            {service.state === "hint_ready" && (
+                <InputBox
+                    question={userQuestion}
+                    setQuestion={setUserQuestion}
+                    captcha_token={captchaToken}
+                    set_captcha_token={setCaptchaToken}
+                    suggested_questions={suggestedQuestions}
+                    submit={() => {
+                        if (captchaToken !== null) {
+                            service.ask(userQuestion, captchaToken);
+                        }
+                    }}
+                    disabled={false}
+                />
+            )}
 
-        }
+            {(service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer") && (
+                <div className="transcript transcript--answer">
+                    <Message speaker="YOU" text={service.question ?? ""} tone="user" />
+                    {service.answer !== null && <ResponseBox answering={service.state === "answering"} answer={service.answer} />}
+                </div>
+            )}
 
+            {service.warning !== null && <RetroAlert severity="warning">{service.warning}</RetroAlert>}
+            {service.error !== null && <RetroAlert severity="error">{service.error}</RetroAlert>}
 
-    </Box>
-}
+            {(service.state === "answering" || service.state === "done" || service.state === "done_history" || service.state === "error_loading_answer" || service.state === "error_loading_hints") && (
+                <div className="terminal-actions">
+                    {navigator.share !== undefined && (
+                        <button className="icon-command" type="button" disabled={service.state === "answering"} onClick={handleShare} aria-label="Share">
+                            <IosShareIcon />
+                        </button>
+                    )}
+                    <button className="icon-command" type="button" disabled={service.state === "answering"} onClick={handleCopyLink} aria-label="Copy link">
+                        <LinkIcon />
+                    </button>
+                    <button className="secondary-command" type="button" disabled={service.state === "answering"} onClick={() => service.reset()}>
+                        <ReplayIcon /> START OVER
+                    </button>
+                </div>
+            )}
+
+            <Snackbar open={notifOpen} autoHideDuration={3000} onClose={() => setNotifOpen(false)}>
+                <Alert onClose={() => setNotifOpen(false)} severity={notifSuccessStatus ? "success" : "error"} sx={{ width: "100%" }}>
+                    {notifMsg}
+                </Alert>
+            </Snackbar>
+        </section>
+    );
+};

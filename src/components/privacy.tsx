@@ -23,8 +23,8 @@ export const PrivacyDialog = () => {
 
     return <>
         <Link
+            className="footer-link"
             sx={{ cursor: "pointer" }}
-            variant="body2"
             color="secondary"
             onClick={() => {
                 handleClickOpen();
