@@ -1,25 +1,32 @@
 import { useEffect } from 'react';
 import MainGrid from "./main";
-import '@fontsource/roboto';
-import '@fontsource/source-sans-pro';
 import { ThemeProvider } from '@mui/material/styles';
 import { createTheme } from '@mui/material/styles';
-import { grey } from "@mui/material/colors";
 
 const theme = createTheme({
   palette: {
+    mode: "dark",
     primary: {
-      light: `#4f83b5`,
-      main: `#155c9e`,
-      dark: `#004e96`,
-      contrastText: `#fff`
+      light: `#e08e44`,
+      main: `#cf7d36`,
+      dark: `#8a5228`,
+      contrastText: `#02080d`
     },
     secondary: {
-      light: grey[600],
-      main: grey[700],
-      dark: grey[800],
-      contrastText: `#fff`
+      light: `#6f94b3`,
+      main: `#506d86`,
+      dark: `#314757`,
+      contrastText: `#f0dfbd`
     }
+  },
+  typography: {
+    fontFamily: `"Zpix Local", "VT323 Local", "Hiragino Sans", "Yu Gothic", "Microsoft YaHei", "PingFang SC", monospace`,
+    button: {
+      textTransform: "uppercase"
+    }
+  },
+  shape: {
+    borderRadius: 3
   }
 })
 

@@ -125,7 +125,7 @@ const SALIERI_LOOKUP_ENDPOINT = (() => {
 
 export const SalieriAPIBackend: SalieriBackend = {
     getHints: async () => {
-        const response = await fetch(SALIERI_HINT_ENDPOINT);
+        const response = await fetch(SALIERI_HINT_ENDPOINT, { cache: "no-store" });
         if (response.ok) {
             const resp = await response.json();
             if (resp.welcome && resp.suggested_questions) {
@@ -185,7 +185,7 @@ export const SalieriAPIBackend: SalieriBackend = {
     },
 
     getResponseHistory: async (id: string) => {
-        const response = await fetch(SALIERI_LOOKUP_ENDPOINT + "?id=" + id);
+        const response = await fetch(SALIERI_LOOKUP_ENDPOINT + "?id=" + id, { cache: "no-store" });
         if (response.ok) {
             const resp = await response.json(); // a single lookupHistoryResponse
             if (resp.question && resp.response && resp.timestamp) {
