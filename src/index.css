@@ -150,9 +150,6 @@ svg {
   display: block;
   width: min(470px, 100%);
   height: auto;
-  filter:
-    drop-shadow(0 0 6px rgba(207, 125, 54, 0.28))
-    drop-shadow(0 0 12px rgba(80, 109, 134, 0.12));
 }
 
 .contact-gadget {
