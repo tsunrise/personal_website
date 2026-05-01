@@ -38,7 +38,6 @@
 }
 
 html {
-  min-width: 320px;
   background: var(--bg);
 }
 
@@ -399,6 +398,7 @@ svg {
 }
 
 .ask-form__input {
+  grid-column: 2;
   width: 100%;
   min-width: 0;
   min-height: 64px;
@@ -436,6 +436,7 @@ svg {
 }
 
 .ask-form__button {
+  grid-column: 3;
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -542,15 +543,30 @@ svg {
 
 .captcha-zone {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
   gap: 12px;
   margin-top: 12px;
   padding-left: 94px;
 }
 
+.captcha-zone[hidden],
+.turnstile-shell[hidden] {
+  display: none !important;
+}
+
 .turnstile-shell {
-  display: grid;
-  gap: 8px;
-  justify-items: start;
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  width: min(100%, 420px);
+}
+
+.turnstile-reset {
+  max-width: 150px;
+  font-size: 18px;
+  line-height: 1.2;
+  text-align: left;
 }
 
 .ask-actions,
@@ -559,6 +575,10 @@ svg {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.captcha-zone > .ask-actions {
+  grid-column: 2;
 }
 
 .secondary-command {
@@ -824,7 +844,7 @@ svg {
 
   .ask-form__button {
     grid-column: 2;
-    justify-self: start;
+    justify-self: end;
     width: 140px;
     margin-top: 10px;
   }
@@ -832,7 +852,50 @@ svg {
   .length-progress,
   .captcha-zone {
     margin-left: 0;
-    padding-left: 86px;
+    padding-left: 0;
+  }
+
+  .captcha-zone {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .captcha-zone > .ask-actions {
+    grid-column: 1;
+  }
+
+  .turnstile-shell {
+    display: grid;
+    gap: 8px;
+    justify-self: stretch;
+    width: 100%;
+    --turnstile-mobile-scale: 0.9;
+    --turnstile-mobile-width: 270px;
+  }
+
+  .turnstile-shell > div {
+    width: var(--turnstile-mobile-width) !important;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .turnstile-shell > div > * {
+    width: 300px !important;
+    transform: scale(var(--turnstile-mobile-scale));
+    transform-origin: top left;
+  }
+
+  .turnstile-shell iframe {
+    width: 300px !important;
+    max-width: none;
+  }
+
+  .turnstile-reset {
+    width: 100%;
+    max-width: none;
+    margin-top: calc(-65px * (1 - var(--turnstile-mobile-scale)));
+    font-size: 18px;
+    text-align: left;
   }
 
   .prompt-grid {
@@ -843,6 +906,11 @@ svg {
 @media (max-width: 560px) {
   body {
     font-size: 20px;
+  }
+
+  .turnstile-shell {
+    --turnstile-mobile-scale: 0.86;
+    --turnstile-mobile-width: 258px;
   }
 
   .hero {
@@ -896,7 +964,7 @@ svg {
 
   .length-progress,
   .captcha-zone {
-    padding-left: 68px;
+    padding-left: 0;
   }
 
   .prompt-card {

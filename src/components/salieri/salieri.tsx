@@ -50,6 +50,9 @@ function InputBox(props: {
     const lengthExceeded = props.question.length > MAX_QUESTION_LENGTH;
     const displayProgress = lengthRatio > 0.8 && !lengthExceeded;
     const [captchaError, setCaptchaError] = useState(false);
+    const sendReady = !lengthExceeded && !trimmedIsEmpty && props.captcha_token !== null && !props.disabled;
+    const turnstileHidden = inputIsEmpty || props.captcha_token !== null || captchaError;
+    const controlsHidden = turnstileHidden && inputIsEmpty && !captchaError;
     const captchaRef = useRef<TurnstileInstance>();
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const askButtonRef = useRef<HTMLButtonElement>(null);
@@ -124,70 +127,74 @@ function InputBox(props: {
                     disabled={props.disabled}
                     onChange={(event) => props.setQuestion(event.target.value)}
                 />
-                <button
-                    ref={askButtonRef}
-                    className="ask-form__button"
-                    type="submit"
-                    disabled={lengthExceeded || trimmedIsEmpty || props.captcha_token === null || props.disabled}
-                    onPointerMove={updateAskGlow}
-                >
-                    ASK
-                </button>
+                {sendReady && (
+                    <button
+                        ref={askButtonRef}
+                        className="ask-form__button"
+                        type="submit"
+                        onPointerMove={updateAskGlow}
+                    >
+                        SEND
+                    </button>
+                )}
             </form>
 
             <Collapse in={displayProgress}>
                 <LinearProgress className="length-progress" variant="determinate" value={lengthRatio * 100} />
             </Collapse>
 
-            {!inputIsEmpty && (
-                <div className="captcha-zone">
-                    {lengthExceeded && (
-                        <RetroAlert severity="error">
-                            Your question is too long. ({props.question.length}/{MAX_QUESTION_LENGTH})
-                        </RetroAlert>
-                    )}
-                    {captchaError && (
-                        <RetroAlert severity="error">
-                            Salieri can only answer questions from humans, and is unable to verify that you are one.
-                        </RetroAlert>
-                    )}
-                    {props.captcha_token === null && !captchaError && (
-                        <div className="turnstile-shell">
-                            <Turnstile
-                                siteKey={cf_turnstile_keys.tomshen_io}
-                                options={{
-                                    theme: "dark",
-                                    appearance: "always"
-                                }}
-                                onSuccess={(token) => {
-                                    props.set_captcha_token(token || getTokens());
-                                    setCaptchaError(false);
-                                }}
-                                onError={() => {
-                                    props.set_captcha_token(null);
-                                    setCaptchaError(true);
-                                }}
-                                onExpire={() => {
-                                    props.set_captcha_token(null);
-                                    setCaptchaError(false);
-                                }}
-                                ref={captchaRef}
-                            />
-                            <button
-                                className="text-command"
-                                type="button"
-                                onClick={() => {
-                                    captchaRef.current?.reset();
-                                }}
-                            >
-                                Cannot see the captcha?
-                            </button>
-                        </div>
-                    )}
+            {lengthExceeded && (
+                <RetroAlert severity="error">
+                    Your question is too long. ({props.question.length}/{MAX_QUESTION_LENGTH})
+                </RetroAlert>
+            )}
+            {captchaError && (
+                <RetroAlert severity="error">
+                    Salieri can only answer questions from humans, and is unable to verify that you are one.
+                </RetroAlert>
+            )}
+
+            <div className="captcha-zone" hidden={controlsHidden}>
+                <div className="turnstile-shell" hidden={turnstileHidden}>
+                    <Turnstile
+                        siteKey={cf_turnstile_keys.tomshen_io}
+                        options={{
+                            theme: "dark",
+                            appearance: "always",
+                            size: "normal"
+                        }}
+                        onSuccess={(token) => {
+                            props.set_captcha_token(token || getTokens());
+                            setCaptchaError(false);
+                        }}
+                        onError={() => {
+                            props.set_captcha_token(null);
+                            setCaptchaError(true);
+                        }}
+                        onExpire={() => {
+                            props.set_captcha_token(null);
+                            setCaptchaError(false);
+                            captchaRef.current?.reset();
+                        }}
+                        ref={captchaRef}
+                    />
+                    <button
+                        className="text-command turnstile-reset"
+                        type="button"
+                        onClick={() => {
+                            captchaRef.current?.reset();
+                        }}
+                    >
+                        Cannot see the captcha?
+                    </button>
+                </div>
+                {(!inputIsEmpty || captchaError) && (
                     <div className="ask-actions">
-                        <button className="secondary-command secondary-command--blue" type="button" onClick={() => props.setQuestion("")}>
-                            <ReplayIcon /> START OVER
-                        </button>
+                        {!inputIsEmpty && (
+                            <button className="secondary-command secondary-command--blue" type="button" onClick={() => props.setQuestion("")}>
+                                <ReplayIcon /> START OVER
+                            </button>
+                        )}
                         {captchaError && (
                             <button
                                 className="secondary-command secondary-command--hot"
@@ -201,8 +208,8 @@ function InputBox(props: {
                             </button>
                         )}
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {inputIsEmpty && props.suggested_questions.length > 0 && (
                 <div className="prompt-grid">
