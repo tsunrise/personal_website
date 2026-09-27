@@ -3,10 +3,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
 } from "@testing-library/react";
 import App from "./App";
-import userEvent from "@testing-library/user-event";
 import { SalieriBackend, StreamItem } from "./components/salieri/service";
 
 jest.mock("./components/landscape/Landscape", () => ({
@@ -30,11 +28,6 @@ jest.mock("@marsidev/react-turnstile", () => {
 function fixture() {
   let update: (item: StreamItem) => void = () => {};
   const backend: SalieriBackend = {
-    getHints: jest.fn(async () => ({
-      welcome: "Hello",
-      suggested_questions: ["What does Tom enjoy?"],
-      announcement: "An announcement",
-    })),
     subscribeToAnswer: jest.fn((q, t, onUpdate) => {
       update = onUpdate;
       return jest.fn();
@@ -58,110 +51,38 @@ beforeEach(() => {
     this.removeAttribute("open");
   };
 });
-test("resting view is minimal; focus reveals hints; social links remain correct", async () => {
+test("resting view and focused input do not fetch or display suggestions", async () => {
   const { backend } = fixture();
-  render(<App backend={backend} />);
-  await waitFor(() => expect(backend.getHints).toHaveBeenCalled());
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-    "Tom Shen",
-  );
-  expect(screen.getByRole("link", { name: "github" })).toHaveAttribute(
-    "href",
-    "https://github.com/tsunrise",
-  );
-  expect(screen.getByRole("link", { name: "linkedin" })).toHaveAttribute(
-    "href",
-    "https://www.linkedin.com/in/conghao-shen/",
-  );
-  expect(screen.queryByText("What does Tom enjoy?")).not.toBeInTheDocument();
-  fireEvent.focus(screen.getByRole("textbox", { name: "Ask about Tom" }));
-  expect(
-    await screen.findByRole("button", { name: /What does Tom enjoy/ }),
-  ).toBeInTheDocument();
-  expect(screen.getByText("An announcement")).toBeInTheDocument();
-});
-test("touching a suggestion keeps input focus until the prompt is filled", async () => {
-  const { backend } = fixture();
-  const user = userEvent.setup();
-  render(<App backend={backend} />);
-  const input = screen.getByRole("textbox", { name: "Ask about Tom" });
-  await user.click(input);
-  const suggestion = await screen.findByRole("button", {
-    name: /What does Tom enjoy/,
-  });
-  await user.pointer({ keys: "[TouchA>]", target: suggestion });
-  expect(input).toHaveFocus();
-  expect(suggestion).toBeInTheDocument();
-  await user.pointer({ keys: "[/TouchA]", target: suggestion });
-  expect(input).toHaveValue("What does Tom enjoy?");
-  expect(input).toHaveFocus();
-  expect(backend.subscribeToAnswer).not.toHaveBeenCalled();
-});
-test("suggestions remain selectable with the keyboard", async () => {
-  const { backend } = fixture();
-  const user = userEvent.setup();
-  render(<App backend={backend} />);
-  const input = screen.getByRole("textbox", { name: "Ask about Tom" });
-  await user.click(input);
-  const suggestion = await screen.findByRole("button", {
-    name: /What does Tom enjoy/,
-  });
-  await user.tab();
-  expect(suggestion).toHaveFocus();
-  await user.keyboard("{Enter}");
-  expect(input).toHaveValue("What does Tom enjoy?");
-  expect(input).toHaveFocus();
-});
-test("an iOS tap fills a suggestion even if the input blurs before touchend and no click arrives", async () => {
-  const { backend } = fixture();
-  render(<App backend={backend} />);
-  const input = screen.getByRole("textbox", { name: "Ask about Tom" });
-  act(() => input.focus());
-  const suggestion = await screen.findByRole("button", {
-    name: /What does Tom enjoy/,
-  });
-  const touch = { identifier: 1, clientX: 80, clientY: 200 };
-  fireEvent.touchStart(suggestion, { touches: [touch] });
-  act(() => input.blur());
-  expect(input).not.toHaveFocus();
-  expect(suggestion).toBeInTheDocument();
-  expect(
-    fireEvent.touchEnd(suggestion, {
-      touches: [],
-      changedTouches: [touch],
-    }),
-  ).toBe(false); // Prevent the delayed compatibility click.
-  expect(input).toHaveValue("What does Tom enjoy?");
-  expect(input).toHaveFocus();
-  expect(backend.subscribeToAnswer).not.toHaveBeenCalled();
-});
-test.each(["scroll", "cancel"])(
-  "a suggestion touch used to %s does not select a question",
-  async (gesture) => {
-    const { backend } = fixture();
-    render(<App backend={backend} />);
-    const input = screen.getByRole("textbox", { name: "Ask about Tom" });
-    act(() => input.focus());
-    const suggestion = await screen.findByRole("button", {
-      name: /What does Tom enjoy/,
+  const fetchMock = jest.fn();
+  const originalFetch = global.fetch;
+  global.fetch = fetchMock;
+  try {
+    await act(async () => {
+      render(<App backend={backend} />);
     });
-    const touch = { identifier: 1, clientX: 80, clientY: 200 };
-    fireEvent.touchStart(suggestion, { touches: [touch] });
-    act(() => input.blur());
-    if (gesture === "scroll") {
-      const moved = { ...touch, clientY: 240 };
-      expect(fireEvent.touchMove(suggestion, { touches: [moved] })).toBe(true);
-      fireEvent.touchEnd(suggestion, { touches: [], changedTouches: [moved] });
-    } else
-      fireEvent.touchCancel(suggestion, {
-        touches: [],
-        changedTouches: [touch],
-      });
-    expect(input).toHaveValue("");
-    expect(input).not.toHaveFocus();
-    expect(suggestion).not.toBeInTheDocument();
-  },
-);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Tom Shen",
+    );
+    expect(screen.getByRole("link", { name: "github" })).toHaveAttribute(
+      "href",
+      "https://github.com/tsunrise",
+    );
+    expect(screen.getByRole("link", { name: "linkedin" })).toHaveAttribute(
+      "href",
+      "https://www.linkedin.com/in/conghao-shen/",
+    );
+    const input = screen.getByRole("textbox", { name: "Ask about Tom" });
+    fireEvent.focus(input);
+    fireEvent.blur(input);
+    fireEvent.focus(input);
+    expect(screen.queryByLabelText("Suggested questions")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Suggestions are unavailable/)).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(backend.subscribeToAnswer).not.toHaveBeenCalled();
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
 test("WeChat dialog dismisses with Escape and restores focus", async () => {
   const { backend } = fixture();
   render(<App backend={backend} />);
@@ -178,7 +99,6 @@ test("WeChat dialog dismisses with Escape and restores focus", async () => {
   );
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(button).toHaveFocus();
-  await waitFor(() => expect(backend.getHints).toHaveBeenCalled());
 });
 test("verification, max length, and IME gate submission; answers expand in place", async () => {
   const f = fixture();
@@ -271,13 +191,11 @@ test("expiry, verification error, and clearing a question require a new token", 
   fireEvent.change(input, { target: { value: "" } });
   fireEvent.change(input, { target: { value: "New question" } });
   expect(screen.getByRole("button", { name: "Send question" })).toBeDisabled();
-  await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
 });
 test("retired history links return to the landing page without a saved-answer UI", async () => {
   window.history.replaceState({}, "", "/history/saved");
   const f = fixture();
   render(<App backend={f.backend} />);
-  await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
   expect(window.location.pathname).toBe("/");
   expect(screen.getByRole("textbox", { name: "Ask about Tom" })).toHaveValue(
     "",
@@ -311,24 +229,6 @@ test("system reduced motion does not change the manual pause control", async () 
   expect(
     screen.getByRole("button", { name: "Pause landscape animation" }),
   ).toHaveAttribute("aria-pressed", "false");
-  await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
-});
-
-test("retrying unavailable suggestions preserves the current draft", async () => {
-  const f = fixture();
-  (f.backend.getHints as jest.Mock).mockRejectedValueOnce(new Error("Offline"));
-  render(<App backend={f.backend} />);
-  const input = screen.getByRole("textbox", { name: "Ask about Tom" });
-  fireEvent.focus(input);
-  await screen.findByText(/Suggestions are unavailable/);
-  fireEvent.change(input, { target: { value: "Keep my question" } });
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await waitFor(() =>
-    expect(
-      screen.queryByText(/Suggestions are unavailable/),
-    ).not.toBeInTheDocument(),
-  );
-  expect(input).toHaveValue("Keep my question");
 });
 
 test("blank prompt has no placeholder; text activates dimming and only interactive verification becomes visible", async () => {
@@ -357,7 +257,6 @@ test("blank prompt has no placeholder; text activates dimming and only interacti
     screen.queryByTestId("verification-challenge"),
   ).not.toBeInTheDocument();
   expect(container.querySelector(".site")).not.toHaveClass("site--engaged");
-  await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
 });
 
 test("editing during streaming removes the answer and ignores its late updates", async () => {
@@ -384,7 +283,6 @@ test("editing during streaming removes the answer and ignores its late updates",
   expect(input.closest(".site")).not.toHaveClass("site--engaged");
   fireEvent.blur(input);
   fireEvent.focus(input);
-  await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
 });
 
 test("pause is temporary, ignores old saved preferences, and resets on a new mount", async () => {
@@ -408,5 +306,4 @@ test("pause is temporary, ignores old saved preferences, and resets on a new mou
   expect(write).not.toHaveBeenCalled();
   read.mockRestore();
   write.mockRestore();
-  await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
 });

@@ -212,24 +212,6 @@ h1 button {
   color: var(--muted);
   margin: 0 0 10px;
 }
-.suggestions {
-  display: grid;
-  gap: 7px;
-  margin: 14px 0;
-}
-.suggestions button {
-  text-align: left;
-  font-size: 13px;
-  line-height: 1.6;
-  opacity: 0.85;
-}
-.suggestions button:hover {
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-.suggestions span {
-  opacity: 0.6;
-}
 .verification__widget {
   height: 0;
   overflow: hidden;
@@ -256,16 +238,9 @@ h1 button {
 .notice--error {
   color: #ffe4d1;
 }
-.notice button,
-.connection-note button {
+.notice button {
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-.connection-note {
-  font-size: 12px;
-  line-height: 1.6;
-  margin-top: 20px;
-  color: #edf0e0;
 }
 .site-footer {
   display: flex;

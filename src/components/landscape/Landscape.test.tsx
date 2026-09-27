@@ -108,6 +108,74 @@ test("failed WebGL initializes a composed Canvas 2D fallback", () => {
   expect(container.querySelector("canvas")).toBeInTheDocument();
   expect(drawImage).toHaveBeenCalled();
 });
+test("all layers share weather that survives pause, hidden tabs, and resize", () => {
+  const requestFrame = window.requestAnimationFrame;
+  const cancelFrame = window.cancelAnimationFrame;
+  jest.useFakeTimers();
+  window.requestAnimationFrame = requestFrame;
+  window.cancelAnimationFrame = cancelFrame;
+  const { rerender, unmount } = render(<Landscape motion />);
+  const materials = () => {
+    const scene = mockRenderer.render.mock.calls[0][0] as THREE.Scene;
+    return scene.children
+      .map((child) => (child as THREE.Mesh).material as THREE.ShaderMaterial)
+      .filter((material) => material.uniforms?.uAirOffset);
+  };
+  const snapshot = () => {
+    const uniforms = materials()[0].uniforms;
+    return [
+      uniforms.uTime.value,
+      uniforms.uWaterEnergy.value,
+      ...uniforms.uAirOffset.value.toArray(),
+      ...uniforms.uWillow.value.toArray(),
+      ...uniforms.uReeds.value.toArray(),
+      ...uniforms.uCurrentOffset.value.toArray(),
+      ...uniforms.uWaveBasis.value.toArray(),
+    ];
+  };
+  act(() => {
+    frame(100);
+    frame(150);
+  });
+  const shared = materials()[0].uniforms.uAirOffset;
+  const waveBasis = materials()[0].uniforms.uWaveBasis;
+  materials().forEach((material) => {
+    expect(material.uniforms.uAirOffset).toBe(shared);
+    expect(material.uniforms.uWaveBasis).toBe(waveBasis);
+    expect(material.uniforms.uTime.value).toBeGreaterThan(0);
+  });
+  const waterKinds = materials()
+    .map((material) => material.uniforms.uKind.value)
+    .filter((kind) => kind === 1 || kind === 4);
+  expect(waterKinds.sort()).toEqual([1, 4]);
+  rerender(<Landscape motion={false} />);
+  act(() => frame(200));
+  const stopped = snapshot();
+  act(() => {
+    frame(20000);
+    mockObserver([], {} as ResizeObserver);
+    jest.advanceTimersByTime(200);
+    frame(20100);
+  });
+  expect(snapshot()).toEqual(stopped);
+  expect(materials()[0].uniforms.uAirOffset).toBe(shared);
+  expect(materials()[0].uniforms.uWaveBasis).toBe(waveBasis);
+  rerender(<Landscape motion />);
+  const hidden = jest.spyOn(document, "hidden", "get").mockReturnValue(true);
+  act(() => frame(30000));
+  expect(snapshot()).toEqual(stopped);
+  hidden.mockReturnValue(false);
+  fireEvent(document, new Event("visibilitychange"));
+  act(() => frame(40000));
+  expect(snapshot()).toEqual(stopped);
+  act(() => frame(40050));
+  expect(snapshot()[0] - stopped[0]).toBeCloseTo(0.05);
+  expect(
+    Math.hypot(snapshot()[2] - stopped[2], snapshot()[3] - stopped[3]),
+  ).toBeGreaterThan(0);
+  unmount();
+  jest.useRealTimers();
+});
 test("touch parallax follows a finger on coarse screens without blocking scrolling, then settles on release", () => {
   window.matchMedia = jest.fn().mockReturnValue({ matches: false });
   const remove = jest.spyOn(window, "removeEventListener");

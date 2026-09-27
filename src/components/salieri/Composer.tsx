@@ -1,24 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Turnstile, TurnstileInstance } from "@marsidev/react-turnstile";
-import { Hints } from "./service";
 
 export const MAX_QUESTION_LENGTH = 300;
 export default function Composer({
   draft,
   setDraft,
-  hints,
   ask,
-  hintError = false,
-  retryHints,
   submitted = false,
 }: {
   submitted?: boolean;
   draft: string;
   setDraft: (s: string) => void;
-  hints: Hints | null;
   ask: (question: string, token: string) => void;
-  hintError?: boolean;
-  retryHints: () => void;
 }) {
   const [active, setActive] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -28,11 +21,6 @@ export default function Composer({
   const input = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const submitting = useRef(false);
-  const suggestionTouch = useRef<{
-    x: number;
-    y: number;
-    moved: boolean;
-  } | null>(null);
   const populated = !!draft.trim(),
     tooLong = draft.length > MAX_QUESTION_LENGTH;
   const ready = populated && !tooLong && !!token && !submitted;
@@ -76,21 +64,6 @@ export default function Composer({
     ask(draft, token);
     setToken(null);
   };
-  const selectSuggestion = (question: string) => {
-    suggestionTouch.current = null;
-    setDraft(question);
-    setActive(true);
-    // Keep focus inside the trusted tap event so iOS can retain its keyboard.
-    input.current?.focus({ preventScroll: true });
-  };
-  const cancelSuggestionTouch = () => {
-    suggestionTouch.current = null;
-    if (
-      !draft &&
-      !input.current?.closest("section")?.contains(document.activeElement)
-    )
-      setActive(false);
-  };
   return (
     <section
       className={`composer ${active ? "composer--active" : ""}`}
@@ -99,8 +72,7 @@ export default function Composer({
       onBlur={(e) => {
         if (
           !e.currentTarget.contains(e.relatedTarget as Node) &&
-          !draft &&
-          !suggestionTouch.current
+          !draft
         )
           setActive(false);
       }}
@@ -154,82 +126,9 @@ export default function Composer({
       </form>
       {active && !submitted && (
         <div className="composer__details">
-          {hintError && (
-            <p className="connection-note">
-              Suggestions are unavailable. You can still ask a question.{" "}
-              <button type="button" onClick={retryHints}>
-                Retry
-              </button>
-            </p>
-          )}
           <p id="question-help" className="question-help sr-only">
             Enter to send. Shift + Enter for a new line.
           </p>
-          {!populated && hints?.suggested_questions.length ? (
-            <div className="suggestions" aria-label="Suggested questions">
-              {hints.suggested_questions.slice(0, 3).map((q) => (
-                <button
-                  type="button"
-                  key={q}
-                  onPointerDown={(e) => {
-                    if (e.pointerType === "touch") {
-                      suggestionTouch.current = {
-                        x: e.clientX,
-                        y: e.clientY,
-                        moved: false,
-                      };
-                    } else if (e.button === 0) e.preventDefault();
-                  }}
-                  onTouchStart={(e) => {
-                    const touch = e.touches[0];
-                    suggestionTouch.current = {
-                      x: touch.clientX,
-                      y: touch.clientY,
-                      moved: e.touches.length !== 1,
-                    };
-                  }}
-                  onTouchMove={(e) => {
-                    const gesture = suggestionTouch.current;
-                    if (!gesture) return;
-                    const touch = e.touches[0];
-                    if (
-                      e.touches.length !== 1 ||
-                      Math.hypot(
-                        touch.clientX - gesture.x,
-                        touch.clientY - gesture.y,
-                      ) > 10
-                    )
-                      gesture.moved = true;
-                  }}
-                  onTouchEnd={(e) => {
-                    const gesture = suggestionTouch.current;
-                    const touch = e.changedTouches[0];
-                    if (
-                      gesture &&
-                      !gesture.moved &&
-                      e.touches.length === 0 &&
-                      Math.hypot(
-                        touch.clientX - gesture.x,
-                        touch.clientY - gesture.y,
-                      ) <= 10
-                    ) {
-                      // Do not depend on Safari's delayed compatibility click: it
-                      // can arrive after blur removes the suggestion buttons.
-                      e.preventDefault();
-                      selectSuggestion(q);
-                    } else cancelSuggestionTouch();
-                  }}
-                  onTouchCancel={cancelSuggestionTouch}
-                  onClick={() => selectSuggestion(q)}
-                >
-                  {q} <span aria-hidden="true">↗</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {hints?.announcement && (
-            <p className="notice">{hints.announcement}</p>
-          )}
           {draft.length > 240 && (
             <p
               className={tooLong ? "notice notice--error" : "character-count"}

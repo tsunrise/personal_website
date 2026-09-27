@@ -94,10 +94,7 @@ export default function App({
             draft={draft}
             submitted={reading}
             setDraft={changeDraft}
-            hints={service.hints}
             ask={service.ask}
-            hintError={service.state === "error_loading_hints"}
-            retryHints={service.retryHints}
           />
           {reading && (
             <article className="conversation" aria-label="Answer">

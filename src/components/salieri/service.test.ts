@@ -1,16 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import {
-  Hints,
   SalieriAPIBackend,
   SalieriBackend,
   StreamItem,
   useSalieri,
 } from "./service";
-const hints: Hints = {
-  welcome: "Hello",
-  suggested_questions: ["What does Tom enjoy?"],
-  announcement: null,
-};
 class FakeSocket {
   static current: FakeSocket;
   onopen: (() => void) | null = null;
@@ -35,28 +29,6 @@ describe("remote API contract", () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
-  });
-  test("preserves the hints endpoint and cancellation signal", async () => {
-    (fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => hints,
-    });
-    const controller = new AbortController();
-    expect(await SalieriAPIBackend.getHints(controller.signal)).toEqual(hints);
-    expect((fetch as jest.Mock).mock.calls[0][0].pathname).toBe(
-      "/api/salieri/hint",
-    );
-    expect((fetch as jest.Mock).mock.calls[0][1]).toEqual({
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  });
-  test("rejects malformed hints", async () => {
-    (fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => ({}),
-    });
-    await expect(SalieriAPIBackend.getHints()).rejects.toThrow();
   });
   test("preserves websocket payload and streamed events through post-finish metadata", () => {
     const update = jest.fn(),
@@ -138,7 +110,6 @@ function backendFixture() {
   let update: (item: StreamItem) => void = () => {};
   const stop = jest.fn();
   const backend: SalieriBackend = {
-    getHints: jest.fn(async () => hints),
     subscribeToAnswer: jest.fn((q, t, onUpdate) => {
       update = onUpdate;
       return stop;
@@ -151,7 +122,7 @@ describe("chat state and navigation", () => {
   test("blocks invalid and duplicate submissions, and ignores old updates after reset", async () => {
     const fixture = backendFixture();
     const { result } = renderHook(() => useSalieri(fixture.backend, () => {}));
-    await waitFor(() => expect(result.current.state).toBe("hint_ready"));
+    await waitFor(() => expect(result.current.state).toBe("ready"));
     act(() => {
       result.current.ask(" ", "token");
       result.current.ask("x".repeat(301), "token");
@@ -169,7 +140,7 @@ describe("chat state and navigation", () => {
       result.current.reset();
       fixture.emit({ type: "delta", delta: "stale" });
     });
-    await waitFor(() => expect(result.current.state).toBe("hint_ready"));
+    await waitFor(() => expect(result.current.state).toBe("ready"));
     expect(result.current.answer).toBeNull();
     expect(window.location.pathname).toBe("/");
     expect(fixture.stop).toHaveBeenCalled();
@@ -181,7 +152,7 @@ describe("chat state and navigation", () => {
       const { result } = renderHook(() =>
         useSalieri(fixture.backend, () => {}),
       );
-      await waitFor(() => expect(result.current.state).toBe("hint_ready"));
+      await waitFor(() => expect(result.current.state).toBe("ready"));
       act(() => result.current.ask("Question", "t"));
       act(() => {
         fixture.emit({ type: "stop", stop_reason: reason });
@@ -200,37 +171,24 @@ describe("chat state and navigation", () => {
     const lookup = jest.fn();
     const backend = { ...fixture.backend, getResponseHistory: lookup };
     const { result } = renderHook(() => useSalieri(backend, () => {}));
-    await waitFor(() => expect(result.current.state).toBe("hint_ready"));
+    await waitFor(() => expect(result.current.state).toBe("ready"));
     expect(lookup).not.toHaveBeenCalled();
     expect(result.current.answer).toBeNull();
     expect(window.location.pathname).toBe("/");
   });
-  test("aborts hint requests and ignores late hints after a question starts", async () => {
+  test("unmounting cancels the active socket", () => {
     const fixture = backendFixture();
-    let resolve: (value: Hints) => void = () => {};
-    (fixture.backend.getHints as jest.Mock).mockImplementation(
-      () =>
-        new Promise((r) => {
-          resolve = r;
-        }),
-    );
     const { result, unmount } = renderHook(() =>
       useSalieri(fixture.backend, () => {}),
     );
-    const signal = (fixture.backend.getHints as jest.Mock).mock.calls[0][0];
     act(() => result.current.ask("Question", "token"));
-    expect(signal.aborted).toBe(true);
-    await act(async () => resolve(hints));
-    expect(result.current.state).toBe("answering");
-    act(() => fixture.emit({ type: "delta", delta: "Answer" }));
-    expect(result.current.answer).toBe("Answer");
     unmount();
-    expect(fixture.stop).toHaveBeenCalled();
+    expect(fixture.stop).toHaveBeenCalledTimes(1);
   });
-  test("clearing an answer cancels its socket without refetching hints", async () => {
+  test("clearing an answer cancels its socket and returns to ready", async () => {
     const fixture = backendFixture();
     const { result } = renderHook(() => useSalieri(fixture.backend, () => {}));
-    await waitFor(() => expect(result.current.state).toBe("hint_ready"));
+    await waitFor(() => expect(result.current.state).toBe("ready"));
     act(() => result.current.ask("Question", "token"));
     act(() => fixture.emit({ type: "delta", delta: "Partial" }));
     act(() => result.current.clearAnswer());
@@ -238,7 +196,6 @@ describe("chat state and navigation", () => {
     act(() => fixture.emit({ type: "delta", delta: "Late" }));
     expect(result.current.answer).toBeNull();
     expect(result.current.question).toBeNull();
-    expect(result.current.hints).toEqual(hints);
-    expect(fixture.backend.getHints).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toBe("ready");
   });
 });

@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export interface Hints {
-  welcome: string;
-  suggested_questions: string[];
-  announcement: string | null;
-}
 export type StopReason = "finish" | "length" | "content_filter" | "unavailable";
 export type StreamItem =
   | { type: "delta"; delta: string }
   | { type: "stop"; stop_reason: StopReason };
 export interface SalieriBackend {
-  getHints(signal?: AbortSignal): Promise<Hints>;
   subscribeToAnswer(
     question: string,
     token: string,
@@ -28,33 +22,7 @@ function endpoint(path: string) {
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url;
 }
-async function getJSON(url: URL, signal?: AbortSignal) {
-  const response = await fetch(url, { cache: "no-store", signal });
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(
-      typeof data?.error === "string"
-        ? data.error
-        : "The service is unavailable. Please try again.",
-    );
-  return data;
-}
 export const SalieriAPIBackend: SalieriBackend = {
-  async getHints(signal) {
-    const data = await getJSON(endpoint("hint"), signal);
-    if (
-      typeof data?.welcome !== "string" ||
-      !Array.isArray(data.suggested_questions) ||
-      !data.suggested_questions.every((q: unknown) => typeof q === "string")
-    ) {
-      throw new Error("Unable to read the suggested questions.");
-    }
-    return {
-      ...data,
-      announcement:
-        typeof data.announcement === "string" ? data.announcement : null,
-    };
-  },
   subscribeToAnswer(question, token, onUpdate, onError) {
     const ws = new WebSocket(endpoint("chat"));
     let stopped = false;
@@ -141,23 +109,19 @@ export const SalieriAPIBackend: SalieriBackend = {
 };
 
 type Status =
-  | "initializing"
-  | "hint_ready"
+  | "ready"
   | "answering"
   | "done"
-  | "error_loading_answer"
-  | "error_loading_hints";
+  | "error_loading_answer";
 interface Snapshot {
   state: Status;
-  hints: Hints | null;
   question: string | null;
   answer: string | null;
   error: string | null;
   warning: string | null;
 }
 const initial: Snapshot = {
-  state: "initializing",
-  hints: null,
+  state: "ready",
   question: null,
   answer: null,
   error: null,
@@ -169,82 +133,39 @@ const message = (e: unknown) =>
 export function useSalieri(backend: SalieriBackend, onReset: () => void) {
   const [snapshot, setSnapshot] = useState<Snapshot>(initial);
   const revision = useRef(0);
-  const request = useRef<AbortController>();
   const unsubscribe = useRef<() => void>();
   const busy = useRef(false);
   const resetCallback = useRef(onReset);
   resetCallback.current = onReset;
   const cancel = useCallback(() => {
     revision.current += 1;
-    request.current?.abort();
     unsubscribe.current?.();
     unsubscribe.current = undefined;
     busy.current = false;
     return revision.current;
   }, []);
 
-  const load = useCallback(() => {
-    const version = cancel();
+  const reset = useCallback(() => {
+    cancel();
     resetCallback.current();
-    const controller = new AbortController();
-    request.current = controller;
     setSnapshot(initial);
     document.title = "Tom Shen";
-    backend
-      .getHints(controller.signal)
-      .then((hints) => {
-        if (version !== revision.current) return;
-        setSnapshot((s) => ({ ...s, hints, state: "hint_ready" }));
-      })
-      .catch((e) => {
-        if (version !== revision.current) return;
-        setSnapshot((s) => ({
-          ...s,
-          state: "error_loading_hints",
-          error: message(e),
-        }));
-      });
-  }, [backend, cancel]);
+  }, [cancel]);
   useEffect(() => {
     // Retired answer links now open the landing page without requesting history.
     if (window.location.pathname.startsWith("/history/")) {
       window.history.replaceState({}, "", "/");
     }
-    load();
+    reset();
     return () => {
       cancel();
     };
-  }, [load, cancel]);
-  const reset = load;
+  }, [reset, cancel]);
   const clearAnswer = useCallback(() => {
     cancel();
     document.title = "Tom Shen";
-    setSnapshot((s) => ({
-      ...initial,
-      hints: s.hints,
-      state: s.hints ? "hint_ready" : "error_loading_hints",
-    }));
+    setSnapshot(initial);
   }, [cancel]);
-  const retryHints = useCallback(() => {
-    const version = cancel();
-    const controller = new AbortController();
-    request.current = controller;
-    setSnapshot((s) => ({ ...s, state: "initializing", error: null }));
-    backend
-      .getHints(controller.signal)
-      .then((hints) => {
-        if (version === revision.current)
-          setSnapshot((s) => ({ ...s, state: "hint_ready", hints }));
-      })
-      .catch((e) => {
-        if (version === revision.current)
-          setSnapshot((s) => ({
-            ...s,
-            state: "error_loading_hints",
-            error: message(e),
-          }));
-      });
-  }, [backend, cancel]);
   const ask = useCallback(
     (question: string, token: string) => {
       const trimmed = question.trim();
@@ -307,5 +228,5 @@ export function useSalieri(backend: SalieriBackend, onReset: () => void) {
     },
     [backend, cancel],
   );
-  return { ...snapshot, ask, reset, clearAnswer, retryHints };
+  return { ...snapshot, ask, reset, clearAnswer };
 }

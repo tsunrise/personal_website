@@ -1,3 +1,6 @@
+import { moonPosition, WATER_HORIZON } from "./composition";
+import { plantMaskColor, reedDepth } from "./plantMotion";
+
 // All landscape textures are drawn locally from seeded geometry. No image assets.
 export function seeded(seed: number) {
   return () => {
@@ -11,8 +14,9 @@ export function seeded(seed: number) {
 export interface Painting {
   canvas: HTMLCanvasElement;
   depth: number;
-  kind: "paint" | "water" | "willow" | "reeds";
+  kind: "paint" | "water" | "willow" | "reeds" | "shallows";
   windMap?: HTMLCanvasElement;
+  fallback?: HTMLCanvasElement;
 }
 function surface(w: number, h: number) {
   const canvas = document.createElement("canvas");
@@ -43,9 +47,10 @@ export function paintLandscape(w: number, h: number): Painting[] {
   };
   // Moon: mineral washes and tiny craters, softened at the limb.
   let ctx = add(2);
-  const mx = w * (portrait ? 0.81 : 0.79),
-    my = h * (portrait ? 0.13 : 0.18);
-  const radius = Math.min(w, h) * (portrait ? 0.105 : 0.078);
+  const moonLocation = moonPosition(w, h);
+  const mx = w * moonLocation.x,
+    my = h * (1 - moonLocation.y);
+  const radius = h * moonLocation.radius;
   const halo = ctx.createRadialGradient(
     mx,
     my,
@@ -136,7 +141,7 @@ export function paintLandscape(w: number, h: number): Painting[] {
   });
   // River with reflected mountains. The shader displaces this reflection gently.
   ctx = add(3, "water");
-  const horizon = h * 0.705;
+  const horizon = h * (1 - WATER_HORIZON);
   const waterStart = horizon - h * 0.065;
   const water = ctx.createLinearGradient(0, waterStart, 0, h);
   water.addColorStop(0, "#a1b8b9");
@@ -153,6 +158,13 @@ export function paintLandscape(w: number, h: number): Painting[] {
   ctx.scale(1, -1);
   mountains.forEach((m) => ctx.drawImage(m, 0, 0));
   ctx.restore();
+  // Only the static fallback needs painted highlights. WebGL derives all glints
+  // from the wave normals, so no bright dashes remain glued to moving water.
+  const river = ctx;
+  const stillRiver = surface(w, h);
+  stillRiver.ctx.drawImage(paintings[paintings.length - 1].canvas, 0, 0);
+  paintings[paintings.length - 1].fallback = stillRiver.canvas;
+  ctx = stillRiver.ctx;
   for (let i = 0; i < 1000; i++) {
     const y = horizon + random() * (h - horizon),
       dist = (y - horizon) / (h - horizon),
@@ -173,20 +185,22 @@ export function paintLandscape(w: number, h: number): Painting[] {
     ctx.fillRect(x, y, random() * radius * 0.35 + 2, 0.5 + dist);
   }
   // Dissolve the river into the mist rather than exposing the texture's straight edge.
-  ctx.save();
-  ctx.globalCompositeOperation = "destination-in";
-  const riverFade = ctx.createLinearGradient(
-    0,
-    waterStart,
-    0,
-    horizon + h * 0.055,
-  );
-  riverFade.addColorStop(0, "rgba(255,255,255,0)");
-  riverFade.addColorStop(0.4, "rgba(255,255,255,.18)");
-  riverFade.addColorStop(1, "rgba(255,255,255,1)");
-  ctx.fillStyle = riverFade;
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
+  for (const waterContext of [river, stillRiver.ctx]) {
+    waterContext.save();
+    waterContext.globalCompositeOperation = "destination-in";
+    const riverFade = waterContext.createLinearGradient(
+      0,
+      waterStart,
+      0,
+      horizon + h * 0.055,
+    );
+    riverFade.addColorStop(0, "rgba(255,255,255,0)");
+    riverFade.addColorStop(0.4, "rgba(255,255,255,.18)");
+    riverFade.addColorStop(1, "rgba(255,255,255,1)");
+    waterContext.fillStyle = riverFade;
+    waterContext.fillRect(0, 0, w, h);
+    waterContext.restore();
+  }
   // Stone bridge. A true open arch, with irregular blocks and a curved parapet.
   ctx = add(4);
   const bx = w * (portrait ? 0.53 : 0.665),
@@ -419,7 +433,7 @@ export function paintLandscape(w: number, h: number): Painting[] {
   }
   ctx.restore();
   // Reed beds include submerged stems and reflections beneath their living foliage.
-  const shallows = add(3, "water");
+  const shallows = add(3, "shallows");
   ctx = add(3, "reeds");
   const reedWind = surface(w, h);
   paintings[paintings.length - 1].windMap = reedWind.canvas;
@@ -543,10 +557,12 @@ export function paintLandscape(w: number, h: number): Painting[] {
       0,
       h * y,
     );
-    mask.addColorStop(0, "white");
-    mask.addColorStop(0.65, "#444");
-    mask.addColorStop(0.9, "black");
-    mask.addColorStop(1, "black");
+    const depth = reedDepth(y);
+    const reach = size * 1.15 * depth;
+    mask.addColorStop(0, plantMaskColor(1, depth, reach));
+    mask.addColorStop(0.65, plantMaskColor(68 / 255, depth, reach * 0.35));
+    mask.addColorStop(0.9, plantMaskColor(0, depth, reach * 0.1));
+    mask.addColorStop(1, plantMaskColor(0, depth, 0));
     reedWind.ctx.fillStyle = mask;
     reedWind.ctx.fillRect(
       w * (x - 0.06),
@@ -703,11 +719,17 @@ export function paintLandscape(w: number, h: number): Painting[] {
       bend = (random() - 0.35) * willowWidth * 0.025;
     foliageRoots.push({ x, y: top });
     const mask = willowWind.ctx.createLinearGradient(0, top, 0, top + length);
-    mask.addColorStop(0, "black");
-    mask.addColorStop(0.15, "#111");
-    mask.addColorStop(1, "white");
+    // The foreground canopy has a shallow depth gradient. Use local tree
+    // coordinates so portrait cropping does not change its physical proportions.
+    const depth = 4.6 + 2.4 * Math.max(0, Math.min(0.4, x / willowWidth));
+    const reach = (length / h) * depth;
+    mask.addColorStop(0, plantMaskColor(0, depth, 0));
+    mask.addColorStop(0.15, plantMaskColor(17 / 255, depth, reach * 0.15));
+    mask.addColorStop(1, plantMaskColor(1, depth, reach));
     willowWind.ctx.strokeStyle = mask;
-    willowWind.ctx.lineWidth = 20;
+    // Cover the swept area as well as the resting leaves: a narrow mask clips
+    // inverse texture displacement when a flexible shoot bends downwind.
+    willowWind.ctx.lineWidth = 64;
     willowWind.ctx.beginPath();
     willowWind.ctx.moveTo(x, top);
     willowWind.ctx.bezierCurveTo(
@@ -779,5 +801,5 @@ export function drawFallback(canvas: HTMLCanvasElement, paintings: Painting[]) {
   sky.addColorStop(1, "#bfc7bf");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, w, h);
-  paintings.forEach((p) => ctx.drawImage(p.canvas, 0, 0, w, h));
+  paintings.forEach((p) => ctx.drawImage(p.fallback ?? p.canvas, 0, 0, w, h));
 }
