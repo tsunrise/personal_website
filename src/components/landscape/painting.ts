@@ -729,7 +729,7 @@ export function paintLandscape(w: number, h: number): Painting[] {
     willowWind.ctx.strokeStyle = mask;
     // Cover the swept area as well as the resting leaves: a narrow mask clips
     // inverse texture displacement when a flexible shoot bends downwind.
-    willowWind.ctx.lineWidth = 64;
+    willowWind.ctx.lineWidth = 88;
     willowWind.ctx.beginPath();
     willowWind.ctx.moveTo(x, top);
     willowWind.ctx.bezierCurveTo(

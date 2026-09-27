@@ -109,8 +109,9 @@ export function createWind(sample = sampleBreeze) {
         state.velocity = wind;
         // Lightly underdamped stems follow a gust, then gently recoil as it
         // eases. Reeds settle sooner than the longer hanging willow shoots.
-        spring(state.willow, willowVelocity, drag, 2.5, 0.5);
-        spring(state.reeds, reedVelocity, drag, 3.8, 0.58);
+        // Match the softer shader bend with a slightly longer natural period.
+        spring(state.willow, willowVelocity, drag, 2.15, 0.5);
+        spring(state.reeds, reedVelocity, drag, 3.27, 0.58);
         const memory = 1 - Math.exp(-STEP / 7);
         for (const axis of ["x", "z"] as const) {
           state.displacement[axis] += wind[axis] * STEP;

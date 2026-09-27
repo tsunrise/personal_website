@@ -76,7 +76,9 @@ vec2 projectPlant(vec2 rest,vec3 mask,vec2 load,bool reed){
  float flexibility=pow(mask.r,1.3);
  float depth=max(mask.g*${PLANT_DEPTH_RANGE.toFixed(1)},1.);
  float reach=mask.b*${PLANT_LENGTH_RANGE.toFixed(1)};
- vec2 bend=load*(reed?.024:.027)*flexibility;
+ // Softer stems make the same gentle breeze easier to see; keep all motion
+ // in world space so perspective and the reach constraint still apply.
+ vec2 bend=load*(reed?.0325:.0365)*flexibility;
  // Keep the root-to-point reach: hanging shoots rise and upright reeds lower
  // slightly as they bend, including when the wind is purely along camera Z.
  float travel=length(bend);
