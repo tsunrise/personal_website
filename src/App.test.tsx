@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import App from "./App";
+import userEvent from "@testing-library/user-event";
 import { SalieriBackend, StreamItem } from "./components/salieri/service";
 
 jest.mock("./components/landscape/Landscape", () => ({
@@ -78,6 +79,38 @@ test("resting view is minimal; focus reveals hints; social links remain correct"
     await screen.findByRole("button", { name: /What does Tom enjoy/ }),
   ).toBeInTheDocument();
   expect(screen.getByText("An announcement")).toBeInTheDocument();
+});
+test("touching a suggestion keeps input focus until the prompt is filled", async () => {
+  const { backend } = fixture();
+  const user = userEvent.setup();
+  render(<App backend={backend} />);
+  const input = screen.getByRole("textbox", { name: "Ask about Tom" });
+  await user.click(input);
+  const suggestion = await screen.findByRole("button", {
+    name: /What does Tom enjoy/,
+  });
+  await user.pointer({ keys: "[TouchA>]", target: suggestion });
+  expect(input).toHaveFocus();
+  expect(suggestion).toBeInTheDocument();
+  await user.pointer({ keys: "[/TouchA]", target: suggestion });
+  expect(input).toHaveValue("What does Tom enjoy?");
+  expect(input).toHaveFocus();
+  expect(backend.subscribeToAnswer).not.toHaveBeenCalled();
+});
+test("suggestions remain selectable with the keyboard", async () => {
+  const { backend } = fixture();
+  const user = userEvent.setup();
+  render(<App backend={backend} />);
+  const input = screen.getByRole("textbox", { name: "Ask about Tom" });
+  await user.click(input);
+  const suggestion = await screen.findByRole("button", {
+    name: /What does Tom enjoy/,
+  });
+  await user.tab();
+  expect(suggestion).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(input).toHaveValue("What does Tom enjoy?");
+  expect(input).toHaveFocus();
 });
 test("WeChat dialog dismisses with Escape and restores focus", async () => {
   const { backend } = fixture();

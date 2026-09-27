@@ -85,20 +85,6 @@ button:disabled {
   display: flex;
   flex-direction: column;
 }
-.site::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  background: radial-gradient(
-    ellipse 45% 62% at 50% 48%,
-    rgba(26, 47, 67, 0.47),
-    rgba(26, 47, 67, 0.18) 68%,
-    transparent 100%
-  );
-  transition: background 700ms;
-}
 .main {
   width: min(100% - 64px, 880px);
   margin: 0 auto;

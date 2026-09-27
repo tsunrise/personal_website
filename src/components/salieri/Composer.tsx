@@ -152,6 +152,11 @@ export default function Composer({
                 <button
                   type="button"
                   key={q}
+                  onPointerDown={(e) => {
+                    // Safari can blur the textarea without focusing a tapped button,
+                    // hiding these suggestions before its click is dispatched.
+                    if (e.button === 0) e.preventDefault();
+                  }}
                   onClick={() => {
                     setDraft(q);
                     input.current?.focus();

@@ -10,7 +10,7 @@ The background is an original, procedural blue-dusk Suzhou landscape: moon at up
 | `src/components/landscape/Landscape.tsx` | Three.js planes, shaders, parallax, animation clock, resize, fallback switching, disposal. |
 | `src/components/landscape/geese.ts` | Occasional flocks, flight scheduling, wing geometry, and bird resource cleanup. |
 | `src/App.tsx` | Manual motion control and the lazily loaded, memoized scene component. |
-| `src/index.css` | Fixed canvas positioning and the reading/dimming overlays. |
+| `src/index.css` | Fixed canvas positioning and interaction dimming. No persistent center overlay; dim only for prompt focus, populated input, or an answer (explicitly clearing the input restores brightness). |
 
 ## Rendering model
 
@@ -28,7 +28,7 @@ Canvas coordinates run downward from the top; shader UV Y runs upward. The river
 
 ## Details to preserve
 
-- **Willow:** `grow()` samples parent branches so joints remain connected. The woody skeleton is static; foliage is a separate layer. Leaf positions follow their hanging stem curves, and wind masks pin attachments even where masks overlap.
+- **Willow:** the tree uses a local width of `max(w, h * 1.15)` and shifts left by 26% of the excess width. Narrow screens crop the canopy instead of squeezing it; wood, foliage, and wind masks share this translation. Do not reintroduce X-only scaling. `grow()` samples parent branches so joints remain connected. The woody skeleton is static; foliage is a separate layer. Leaf positions follow their hanging stem curves, and wind masks pin attachments even where masks overlap.
 - **Reeds:** keep roots in shallow water, not on dry banks. Submerged stems fade into soft bed shadows and broken reflections. Root masks stay dark so tips sway without the whole clump sliding across the water.
 - **Bridge:** keep the footing connected to its softly textured bank. Both use depth 4 so parallax cannot separate them. The approach is deliberately abstract, with no paved path.
 - **River:** preserve the alpha fade into distant mist; a hard texture edge previously produced a horizontal seam.
@@ -37,7 +37,7 @@ Canvas coordinates run downward from the top; shader UV Y runs upward. The river
 
 ## Performance and fallback
 
-Rendering is capped at 30 fps and device pixel ratio 1.5. Painting resolution scales by `min(1.5, 1600 / width, 1400 / height)`; resize is debounced by 160 ms. Pointer parallax requires a fine pointer and ignores touch events. Pause state lives only in React memory and is never read from or written to browser storage. Each page load starts unpaused. System reduced-motion preferences are not consulted; the page toggle alone freezes animation. As a separate performance measure, hidden tabs do not advance the clock or render.
+Rendering is capped at 30 fps and device pixel ratio 1.5. Painting resolution scales by `min(1.5, 1600 / width, 1400 / height)`; resize is debounced by 160 ms. Mouse parallax requires a fine pointer. Single-finger touchstart/touchmove use the same clamped viewport coordinates through passive listeners, so Safari native scrolling can continue after pointer cancellation. Touch release, cancellation, or multiple fingers return the target to center; never disable scrolling or pinch zoom to enable parallax. Pause state lives only in React memory and is never read from or written to browser storage. Each page load starts unpaused. System reduced-motion preferences are not consulted; the page toggle alone freezes animation. As a separate performance measure, hidden tabs do not advance the clock or render.
 
 WebGL initialization failure or context loss switches to `drawFallback()`, which composites the same artwork over a static sky. It has no shader movement or geese and remains active until remount/reload. Inspect `.landscape[data-renderer]` (`webgl` or `canvas2d`) when debugging.
 
@@ -50,4 +50,4 @@ CI=true npm test -- --watchAll=false --runInBand src/components/landscape
 npm run build
 ```
 
-The scene tests cover pause behavior, wind-map disposal, initialization failure, and context loss/resize; geese tests cover scheduling, wings, and cleanup. They do not judge visual quality. Inspect desktop and narrow portrait screens, resize and pointer extremes, focused/answered chat contrast, manual pause/resume, and the Canvas 2D fallback. Restore browser emulation and any forced context loss after checking.
+The scene tests cover pause behavior, touch parallax and listener cleanup, wind-map disposal, initialization failure, and context loss/resize; geese tests cover scheduling, wings, and cleanup. They do not judge visual quality. Inspect desktop and narrow portrait screens, resize and pointer extremes, focused/answered chat contrast, manual pause/resume, and the Canvas 2D fallback. Restore browser emulation and any forced context loss after checking.
