@@ -231,14 +231,26 @@ function Landscape({ motion }: { motion: boolean }) {
       renderer!.render(scene, camera);
       renderedStill = !moving;
     }
+    const follow = (x: number, y: number) => {
+      target.x = Math.max(-1, Math.min(1, (x / width - 0.5) * 2));
+      target.y = Math.max(-1, Math.min(1, (y / height - 0.5) * 2));
+      renderedStill = false;
+    };
     const pointer = (e: PointerEvent) => {
       if (!finePointer.matches || e.pointerType === "touch") return;
-      target.x = (e.clientX / width - 0.5) * 2;
-      target.y = (e.clientY / height - 0.5) * 2;
-      renderedStill = false;
+      follow(e.clientX, e.clientY);
     };
     const leave = () => {
       target.x = target.y = 0;
+    };
+    // Passive Touch Events keep following a finger after Safari hands a pan to
+    // native scrolling (which cancels Pointer Events). Pinch gestures stay native.
+    const touch = (e: TouchEvent) => {
+      if (e.touches.length !== 1) {
+        leave();
+        return;
+      }
+      follow(e.touches[0].clientX, e.touches[0].clientY);
     };
     const visibility = () => {
       last = 0;
@@ -276,6 +288,10 @@ function Landscape({ motion }: { motion: boolean }) {
     });
     observer.observe(container);
     window.addEventListener("pointermove", pointer, { passive: true });
+    window.addEventListener("touchstart", touch, { passive: true });
+    window.addEventListener("touchmove", touch, { passive: true });
+    window.addEventListener("touchend", leave, { passive: true });
+    window.addEventListener("touchcancel", leave, { passive: true });
     document.documentElement.addEventListener("pointerleave", leave);
     document.addEventListener("visibilitychange", visibility);
     return () => {
@@ -284,6 +300,10 @@ function Landscape({ motion }: { motion: boolean }) {
       clearTimeout(resizeTimer);
       observer.disconnect();
       window.removeEventListener("pointermove", pointer);
+      window.removeEventListener("touchstart", touch);
+      window.removeEventListener("touchmove", touch);
+      window.removeEventListener("touchend", leave);
+      window.removeEventListener("touchcancel", leave);
       document.documentElement.removeEventListener("pointerleave", leave);
       document.removeEventListener("visibilitychange", visibility);
       renderer?.domElement.removeEventListener("webglcontextlost", lost);

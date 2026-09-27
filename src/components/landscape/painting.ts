@@ -574,16 +574,20 @@ export function paintLandscape(w: number, h: number): Painting[] {
   }
   // Willow, grown from a deterministic branching skeleton.
   ctx = add(5);
-  const sx = portrait ? 0.73 : 1;
+  // Keep a minimum local aspect ratio instead of squeezing branches on phones.
+  // Narrow viewports crop a wider tree at the left edge, preserving branch angles,
+  // leaf shapes, and the shared coordinates of wood, foliage, and wind masks.
+  const willowWidth = Math.max(w, h * 1.15);
+  const willowLeft = -(willowWidth - w) * 0.26;
   ctx.save();
-  ctx.scale(sx, 1);
+  ctx.translate(willowLeft, 0);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   type Limb = { points: number[]; width: number };
   const limbs: Limb[] = [
     {
       points: [-0.045, 1.03, 0.04, 0.82, 0.063, 0.58, -0.007, 0.37],
-      width: w * 0.032,
+      width: willowWidth * 0.032,
     },
   ];
   const sample = (p: number[], t: number) => {
@@ -594,7 +598,7 @@ export function paintLandscape(w: number, h: number): Painting[] {
           3 * u * u * t * p[2] +
           3 * u * t * t * p[4] +
           t * t * t * p[6]) *
-        w,
+        willowWidth,
       y:
         (u * u * u * p[1] +
           3 * u * u * t * p[3] +
@@ -619,16 +623,16 @@ export function paintLandscape(w: number, h: number): Painting[] {
     const tangent = sample(parent.points, Math.min(1, t + 0.1));
     limbs.push({
       points: [
-        behind.x / w,
+        behind.x / willowWidth,
         behind.y / h,
-        tangent.x / w,
+        tangent.x / willowWidth,
         tangent.y / h,
         bendX,
         bendY,
         endX,
         endY,
       ],
-      width: w * width,
+      width: willowWidth * width,
     });
     // The root cap sits fully inside its parent, including on narrow screens.
   };
@@ -684,10 +688,10 @@ export function paintLandscape(w: number, h: number): Painting[] {
   // Keep the woody skeleton still; only the hanging foliage responds to wind.
   ctx = add(5, "willow");
   ctx.save();
-  ctx.scale(sx, 1);
+  ctx.translate(willowLeft, 0);
   const willowWind = surface(w, h);
   paintings[paintings.length - 1].windMap = willowWind.canvas;
-  willowWind.ctx.scale(sx, 1);
+  willowWind.ctx.translate(willowLeft, 0);
   const foliageRoots: { x: number; y: number }[] = [];
   // Foliage grows from the outer limbs, in irregular overlapping clusters.
   for (let i = 0; i < 230; i++) {
@@ -696,7 +700,7 @@ export function paintLandscape(w: number, h: number): Painting[] {
     const x = start.x,
       top = start.y;
     const length = h * (0.065 + random() * 0.23),
-      bend = (random() - 0.35) * w * 0.025;
+      bend = (random() - 0.35) * willowWidth * 0.025;
     foliageRoots.push({ x, y: top });
     const mask = willowWind.ctx.createLinearGradient(0, top, 0, top + length);
     mask.addColorStop(0, "black");

@@ -159,7 +159,7 @@ export default function App({
           >
             {motion ? "Ⅱ" : "▷"}
           </span>
-          <span>{motion ? "pause" : "still"}</span>
+          <span>{motion ? "pause" : "resume"}</span>
         </button>
         <div className="footer-links">
           <span>© Conghao Shen</span>

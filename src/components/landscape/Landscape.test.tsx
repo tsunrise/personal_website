@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import * as THREE from "three";
 import Landscape from "./Landscape";
 let mockFailRenderer = false;
@@ -107,6 +107,46 @@ test("failed WebGL initializes a composed Canvas 2D fallback", () => {
   );
   expect(container.querySelector("canvas")).toBeInTheDocument();
   expect(drawImage).toHaveBeenCalled();
+});
+test("touch parallax follows a finger on coarse screens without blocking scrolling, then settles on release", () => {
+  window.matchMedia = jest.fn().mockReturnValue({ matches: false });
+  const remove = jest.spyOn(window, "removeEventListener");
+  const { rerender, unmount } = render(<Landscape motion />);
+  act(() => frame(100));
+  const scene = mockRenderer.render.mock.calls[0][0] as THREE.Scene;
+  const moon = scene.children.find((child) => child.renderOrder === 1)!;
+  const move = (type: string, touches: { clientX: number; clientY: number }[]) => {
+    const event = new Event(type, { cancelable: true });
+    Object.defineProperty(event, "touches", { value: touches });
+    fireEvent(window, event);
+    expect(event.defaultPrevented).toBe(false);
+  };
+  move("touchstart", [{ clientX: 400, clientY: 300 }]);
+  move("touchmove", [{ clientX: 0, clientY: 150 }]);
+  act(() => frame(150));
+  expect(moon.position.x).toBeLessThan(0);
+  expect(moon.position.y).toBeGreaterThan(0);
+  const left = moon.position.x;
+  // Native scrolling may cancel pointer events; touchmove must still work.
+  fireEvent(window, new Event("pointercancel"));
+  move("touchmove", [{ clientX: 800, clientY: 450 }]);
+  act(() => frame(200));
+  expect(moon.position.x).toBeGreaterThan(left);
+  expect(moon.position.x).toBeGreaterThan(0);
+  const right = moon.position.x;
+  move("touchend", []);
+  act(() => frame(250));
+  expect(moon.position.x).toBeGreaterThan(0);
+  expect(moon.position.x).toBeLessThan(right);
+  rerender(<Landscape motion={false} />);
+  move("touchmove", [{ clientX: 800, clientY: 0 }]);
+  act(() => frame(300));
+  expect(moon.position.x).toBe(0);
+  expect(moon.position.y).toBeCloseTo(0);
+  unmount();
+  ["touchstart", "touchmove", "touchend", "touchcancel"].forEach((event) =>
+    expect(remove).toHaveBeenCalledWith(event, expect.any(Function)),
+  );
 });
 test("context loss switches to a static fallback and survives resize", () => {
   jest.useFakeTimers();
