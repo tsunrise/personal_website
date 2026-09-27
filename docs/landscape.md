@@ -10,7 +10,7 @@ The background is an original, procedural blue-dusk Suzhou landscape: moon at up
 | `src/components/landscape/Landscape.tsx` | Three.js planes, shaders, parallax, animation clock, resize, fallback switching, disposal. |
 | `src/components/landscape/geese.ts` | Occasional flocks, flight scheduling, wing geometry, and bird resource cleanup. |
 | `src/App.tsx` | Manual motion control and the lazily loaded, memoized scene component. |
-| `src/index.css` | Fixed canvas positioning and interaction dimming. No persistent center overlay; dim only for prompt focus, populated input, or an answer (explicitly clearing the input restores brightness). |
+| `src/index.css` | Fixed canvas positioning and interaction dimming. No persistent center overlay; dim only for prompt focus, populated input, or an answer (clearing a focused input stays dim until focus leaves). |
 
 ## Rendering model
 

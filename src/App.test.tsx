@@ -112,6 +112,56 @@ test("suggestions remain selectable with the keyboard", async () => {
   expect(input).toHaveValue("What does Tom enjoy?");
   expect(input).toHaveFocus();
 });
+test("an iOS tap fills a suggestion even if the input blurs before touchend and no click arrives", async () => {
+  const { backend } = fixture();
+  render(<App backend={backend} />);
+  const input = screen.getByRole("textbox", { name: "Ask about Tom" });
+  act(() => input.focus());
+  const suggestion = await screen.findByRole("button", {
+    name: /What does Tom enjoy/,
+  });
+  const touch = { identifier: 1, clientX: 80, clientY: 200 };
+  fireEvent.touchStart(suggestion, { touches: [touch] });
+  act(() => input.blur());
+  expect(input).not.toHaveFocus();
+  expect(suggestion).toBeInTheDocument();
+  expect(
+    fireEvent.touchEnd(suggestion, {
+      touches: [],
+      changedTouches: [touch],
+    }),
+  ).toBe(false); // Prevent the delayed compatibility click.
+  expect(input).toHaveValue("What does Tom enjoy?");
+  expect(input).toHaveFocus();
+  expect(backend.subscribeToAnswer).not.toHaveBeenCalled();
+});
+test.each(["scroll", "cancel"])(
+  "a suggestion touch used to %s does not select a question",
+  async (gesture) => {
+    const { backend } = fixture();
+    render(<App backend={backend} />);
+    const input = screen.getByRole("textbox", { name: "Ask about Tom" });
+    act(() => input.focus());
+    const suggestion = await screen.findByRole("button", {
+      name: /What does Tom enjoy/,
+    });
+    const touch = { identifier: 1, clientX: 80, clientY: 200 };
+    fireEvent.touchStart(suggestion, { touches: [touch] });
+    act(() => input.blur());
+    if (gesture === "scroll") {
+      const moved = { ...touch, clientY: 240 };
+      expect(fireEvent.touchMove(suggestion, { touches: [moved] })).toBe(true);
+      fireEvent.touchEnd(suggestion, { touches: [], changedTouches: [moved] });
+    } else
+      fireEvent.touchCancel(suggestion, {
+        touches: [],
+        changedTouches: [touch],
+      });
+    expect(input).toHaveValue("");
+    expect(input).not.toHaveFocus();
+    expect(suggestion).not.toBeInTheDocument();
+  },
+);
 test("WeChat dialog dismisses with Escape and restores focus", async () => {
   const { backend } = fixture();
   render(<App backend={backend} />);
@@ -197,7 +247,6 @@ test("verification, max length, and IME gate submission; answers expand in place
   fireEvent.change(input, { target: { value: "" } });
   expect(screen.queryByRole("article")).not.toBeInTheDocument();
   expect(input).toHaveValue("");
-  expect(input.closest(".site")).toHaveClass("site--cleared");
   expect(input.closest(".site")).not.toHaveClass("site--engaged");
 });
 test("expiry, verification error, and clearing a question require a new token", async () => {
@@ -332,10 +381,9 @@ test("editing during streaming removes the answer and ignores its late updates",
   expect(screen.queryByRole("article")).not.toBeInTheDocument();
   expect(document.title).toBe("Tom Shen");
   fireEvent.change(input, { target: { value: "" } });
-  expect(input.closest(".site")).toHaveClass("site--cleared");
+  expect(input.closest(".site")).not.toHaveClass("site--engaged");
   fireEvent.blur(input);
   fireEvent.focus(input);
-  expect(input.closest(".site")).not.toHaveClass("site--cleared");
   await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
 });
 

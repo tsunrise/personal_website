@@ -11,10 +11,8 @@ export default function Composer({
   hintError = false,
   retryHints,
   submitted = false,
-  onActivate,
 }: {
   submitted?: boolean;
-  onActivate: () => void;
   draft: string;
   setDraft: (s: string) => void;
   hints: Hints | null;
@@ -30,6 +28,11 @@ export default function Composer({
   const input = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
   const submitting = useRef(false);
+  const suggestionTouch = useRef<{
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
   const populated = !!draft.trim(),
     tooLong = draft.length > MAX_QUESTION_LENGTH;
   const ready = populated && !tooLong && !!token && !submitted;
@@ -73,16 +76,32 @@ export default function Composer({
     ask(draft, token);
     setToken(null);
   };
+  const selectSuggestion = (question: string) => {
+    suggestionTouch.current = null;
+    setDraft(question);
+    setActive(true);
+    // Keep focus inside the trusted tap event so iOS can retain its keyboard.
+    input.current?.focus({ preventScroll: true });
+  };
+  const cancelSuggestionTouch = () => {
+    suggestionTouch.current = null;
+    if (
+      !draft &&
+      !input.current?.closest("section")?.contains(document.activeElement)
+    )
+      setActive(false);
+  };
   return (
     <section
       className={`composer ${active ? "composer--active" : ""}`}
       aria-label="Ask a question about Tom"
-      onFocus={(e) => {
-        setActive(true);
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) onActivate();
-      }}
+      onFocus={() => setActive(true)}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node) && !draft)
+        if (
+          !e.currentTarget.contains(e.relatedTarget as Node) &&
+          !draft &&
+          !suggestionTouch.current
+        )
           setActive(false);
       }}
     >
@@ -153,14 +172,55 @@ export default function Composer({
                   type="button"
                   key={q}
                   onPointerDown={(e) => {
-                    // Safari can blur the textarea without focusing a tapped button,
-                    // hiding these suggestions before its click is dispatched.
-                    if (e.button === 0) e.preventDefault();
+                    if (e.pointerType === "touch") {
+                      suggestionTouch.current = {
+                        x: e.clientX,
+                        y: e.clientY,
+                        moved: false,
+                      };
+                    } else if (e.button === 0) e.preventDefault();
                   }}
-                  onClick={() => {
-                    setDraft(q);
-                    input.current?.focus();
+                  onTouchStart={(e) => {
+                    const touch = e.touches[0];
+                    suggestionTouch.current = {
+                      x: touch.clientX,
+                      y: touch.clientY,
+                      moved: e.touches.length !== 1,
+                    };
                   }}
+                  onTouchMove={(e) => {
+                    const gesture = suggestionTouch.current;
+                    if (!gesture) return;
+                    const touch = e.touches[0];
+                    if (
+                      e.touches.length !== 1 ||
+                      Math.hypot(
+                        touch.clientX - gesture.x,
+                        touch.clientY - gesture.y,
+                      ) > 10
+                    )
+                      gesture.moved = true;
+                  }}
+                  onTouchEnd={(e) => {
+                    const gesture = suggestionTouch.current;
+                    const touch = e.changedTouches[0];
+                    if (
+                      gesture &&
+                      !gesture.moved &&
+                      e.touches.length === 0 &&
+                      Math.hypot(
+                        touch.clientX - gesture.x,
+                        touch.clientY - gesture.y,
+                      ) <= 10
+                    ) {
+                      // Do not depend on Safari's delayed compatibility click: it
+                      // can arrive after blur removes the suggestion buttons.
+                      e.preventDefault();
+                      selectSuggestion(q);
+                    } else cancelSuggestionTouch();
+                  }}
+                  onTouchCancel={cancelSuggestionTouch}
+                  onClick={() => selectSuggestion(q)}
                 >
                   {q} <span aria-hidden="true">↗</span>
                 </button>

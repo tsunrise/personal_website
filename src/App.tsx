@@ -21,11 +21,9 @@ export default function App({
   backend?: SalieriBackend;
 }) {
   const [draft, setDraft] = useState("");
-  const [cleared, setCleared] = useState(false);
   const [dialog, setDialog] = useState<"wechat" | "privacy" | null>(null);
   const resetUI = useCallback(() => {
     setDraft("");
-    setCleared(false);
   }, []);
   const service = useSalieri(backend, resetUI);
   const { motion, toggle } = useMotion();
@@ -34,7 +32,6 @@ export default function App({
   const changeDraft = (value: string) => {
     if (reading) service.clearAnswer();
     setDraft(value);
-    setCleared(!value.trim());
   };
   const returnHome = () => {
     service.reset();
@@ -42,7 +39,7 @@ export default function App({
   };
   return (
     <div
-      className={`site ${reading || draft.trim() ? "site--engaged" : ""} ${cleared ? "site--cleared" : ""}`}
+      className={`site ${reading || draft.trim() ? "site--engaged" : ""}`}
     >
       <Suspense
         fallback={
@@ -97,7 +94,6 @@ export default function App({
             draft={draft}
             submitted={reading}
             setDraft={changeDraft}
-            onActivate={() => setCleared(false)}
             hints={service.hints}
             ask={service.ask}
             hintError={service.state === "error_loading_hints"}

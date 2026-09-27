@@ -555,7 +555,7 @@ h1 button {
   transition: opacity 450ms ease;
 }
 .site--engaged::after,
-.site:not(.site--cleared):has(.composer:focus-within)::after {
+.site:has(.composer:focus-within)::after {
   opacity: 1;
 }
 

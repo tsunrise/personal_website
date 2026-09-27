@@ -5,8 +5,8 @@ React 18, TypeScript, and Create React App. See [README.md](README.md) for insta
 ## Structure
 
 - `src/App.tsx`: page composition, inline answers, dialogs, and manual motion control.
-- `src/index.css`: typography, responsive layout, and interaction-only background dimming (no resting center overlay).
-- `src/components/salieri/Composer.tsx`: editable prompt, touch-safe suggestions, and Turnstile lifecycle.
+- `src/index.css`: typography, responsive layout, and background dimming for focus, populated prompts, or answers; clearing a focused prompt stays dim.
+- `src/components/salieri/Composer.tsx`: editable prompt, suggestions, and Turnstile lifecycle. Suggestion taps commit on touchend and survive Safari blur; scrolling/canceled touches must not select a question.
 - `src/components/salieri/service.ts`: remote API, streaming, cancellation, and chat state.
 - `src/components/landscape/`: procedural artwork and Three.js rendering. Read [docs/landscape.md](docs/landscape.md) before changing the scene, including mobile willow proportions and passive touch parallax.
 - `src/components/Dialog.tsx`, `privacy.tsx`: accessible dialogs; `src/images/qr-code.svg`: WeChat QR code.
