@@ -4,7 +4,7 @@ React 18, TypeScript, and Create React App. See [README.md](README.md) for insta
 
 ## Structure
 
-- `src/App.tsx`: page composition, inline answers, dialogs, and motion preference.
+- `src/App.tsx`: page composition, inline answers, dialogs, and manual motion control.
 - `src/index.css`: typography, responsive layout, and background dimming.
 - `src/components/salieri/Composer.tsx`: editable prompt and Turnstile lifecycle.
 - `src/components/salieri/service.ts`: remote API, streaming, cancellation, and chat state.

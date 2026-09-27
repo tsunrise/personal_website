@@ -9,7 +9,7 @@ The background is an original, procedural blue-dusk Suzhou landscape: moon at up
 | `src/components/landscape/painting.ts` | Seeded Canvas 2D artwork, layer depths, portrait composition, wind masks, static fallback. |
 | `src/components/landscape/Landscape.tsx` | Three.js planes, shaders, parallax, animation clock, resize, fallback switching, disposal. |
 | `src/components/landscape/geese.ts` | Occasional flocks, flight scheduling, wing geometry, and bird resource cleanup. |
-| `src/App.tsx` | Motion preference and the lazily loaded, memoized scene component. |
+| `src/App.tsx` | Manual motion control and the lazily loaded, memoized scene component. |
 | `src/index.css` | Fixed canvas positioning and the reading/dimming overlays. |
 
 ## Rendering model
@@ -37,7 +37,7 @@ Canvas coordinates run downward from the top; shader UV Y runs upward. The river
 
 ## Performance and fallback
 
-Rendering is capped at 30 fps and device pixel ratio 1.5. Painting resolution scales by `min(1.5, 1600 / width, 1400 / height)`; resize is debounced by 160 ms. Pointer parallax requires a fine pointer and ignores touch events. The motion toggle and reduced-motion preference freeze animation; hidden tabs do not advance the clock or render.
+Rendering is capped at 30 fps and device pixel ratio 1.5. Painting resolution scales by `min(1.5, 1600 / width, 1400 / height)`; resize is debounced by 160 ms. Pointer parallax requires a fine pointer and ignores touch events. Pause state lives only in React memory and is never read from or written to browser storage. Each page load starts unpaused. System reduced-motion preferences are not consulted; the page toggle alone freezes animation. As a separate performance measure, hidden tabs do not advance the clock or render.
 
 WebGL initialization failure or context loss switches to `drawFallback()`, which composites the same artwork over a static sky. It has no shader movement or geese and remains active until remount/reload. Inspect `.landscape[data-renderer]` (`webgl` or `canvas2d`) when debugging.
 
@@ -50,4 +50,4 @@ CI=true npm test -- --watchAll=false --runInBand src/components/landscape
 npm run build
 ```
 
-The scene tests cover pause behavior, wind-map disposal, initialization failure, and context loss/resize; geese tests cover scheduling, wings, and cleanup. They do not judge visual quality. Inspect desktop and narrow portrait screens, resize and pointer extremes, focused/answered chat contrast, paused/reduced motion, and the Canvas 2D fallback. Restore browser emulation and any forced context loss after checking.
+The scene tests cover pause behavior, wind-map disposal, initialization failure, and context loss/resize; geese tests cover scheduling, wings, and cleanup. They do not judge visual quality. Inspect desktop and narrow portrait screens, resize and pointer extremes, focused/answered chat contrast, manual pause/resume, and the Canvas 2D fallback. Restore browser emulation and any forced context loss after checking.

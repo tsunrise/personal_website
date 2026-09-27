@@ -205,7 +205,7 @@ test("retired history links return to the landing page without a saved-answer UI
     screen.queryByText(/saved conversation|report abuse|salieri/i),
   ).not.toBeInTheDocument();
 });
-test("reduced motion cannot be overridden by the page control", async () => {
+test("system reduced motion does not change the manual pause control", async () => {
   (window.matchMedia as jest.Mock).mockReturnValue({
     matches: true,
     addEventListener: jest.fn(),
@@ -213,11 +213,22 @@ test("reduced motion cannot be overridden by the page control", async () => {
   });
   const f = fixture();
   render(<App backend={f.backend} />);
+  const pause = screen.getByRole("button", {
+    name: "Pause landscape animation",
+  });
+  expect(pause).toBeEnabled();
+  expect(window.matchMedia).not.toHaveBeenCalledWith(
+    "(prefers-reduced-motion: reduce)",
+  );
+  fireEvent.click(pause);
+  const resume = screen.getByRole("button", {
+    name: "Resume landscape animation",
+  });
+  expect(resume).toBeEnabled();
+  fireEvent.click(resume);
   expect(
-    screen.getByRole("button", {
-      name: "Animation disabled by reduced motion preference",
-    }),
-  ).toBeDisabled();
+    screen.getByRole("button", { name: "Pause landscape animation" }),
+  ).toHaveAttribute("aria-pressed", "false");
   await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
 });
 
@@ -292,5 +303,29 @@ test("editing during streaming removes the answer and ignores its late updates",
   fireEvent.blur(input);
   fireEvent.focus(input);
   expect(input.closest(".site")).not.toHaveClass("site--cleared");
+  await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
+});
+
+test("pause is temporary, ignores old saved preferences, and resets on a new mount", async () => {
+  localStorage.setItem("landscape-paused", "true");
+  const read = jest.spyOn(Storage.prototype, "getItem");
+  const write = jest.spyOn(Storage.prototype, "setItem");
+  const f = fixture();
+  const first = render(<App backend={f.backend} />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Pause landscape animation" }),
+  );
+  expect(
+    screen.getByRole("button", { name: "Resume landscape animation" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  first.unmount();
+  render(<App backend={f.backend} />);
+  expect(
+    screen.getByRole("button", { name: "Pause landscape animation" }),
+  ).toHaveAttribute("aria-pressed", "false");
+  expect(read).not.toHaveBeenCalled();
+  expect(write).not.toHaveBeenCalled();
+  read.mockRestore();
+  write.mockRestore();
   await waitFor(() => expect(f.backend.getHints).toHaveBeenCalled());
 });

@@ -321,9 +321,6 @@ h1 button {
   font-size: 18px;
   line-height: 12px;
 }
-.motion-control:disabled {
-  opacity: 0.6;
-}
 .conversation {
   margin-top: 14px;
   animation: reveal 450ms ease both;
@@ -554,15 +551,6 @@ h1 button {
   }
   h1 {
     font-size: 38px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition: none !important;
-    scroll-behavior: auto !important;
   }
 }
 .site::after {

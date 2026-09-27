@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import Dialog from "./components/Dialog";
 import { PrivacyDialog } from "./components/privacy";
 import Composer from "./components/salieri/Composer";
@@ -11,31 +11,9 @@ import wechatQRCode from "./images/qr-code.svg";
 const Landscape = lazy(() => import("./components/landscape/Landscape"));
 
 function useMotion() {
-  const [reduced, setReduced] = useState(
-    () =>
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
-  );
-  const [paused, setPaused] = useState(() => {
-    try {
-      return localStorage.getItem("landscape-paused") === "true";
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const change = () => setReduced(media.matches);
-    media.addEventListener("change", change);
-    return () => media.removeEventListener("change", change);
-  }, []);
-  const toggle = () =>
-    setPaused((p) => {
-      try {
-        localStorage.setItem("landscape-paused", String(!p));
-      } catch {}
-      return !p;
-    });
-  return { motion: !reduced && !paused, reduced, toggle };
+  const [paused, setPaused] = useState(false);
+  const toggle = () => setPaused((p) => !p);
+  return { motion: !paused, toggle };
 }
 export default function App({
   backend = SalieriAPIBackend,
@@ -50,7 +28,7 @@ export default function App({
     setCleared(false);
   }, []);
   const service = useSalieri(backend, resetUI);
-  const { motion, reduced, toggle } = useMotion();
+  const { motion, toggle } = useMotion();
   const reading = service.question !== null;
   const answering = service.state === "answering";
   const changeDraft = (value: string) => {
@@ -169,14 +147,9 @@ export default function App({
           type="button"
           onClick={toggle}
           aria-label={
-            reduced
-              ? "Animation disabled by reduced motion preference"
-              : motion
-                ? "Pause landscape animation"
-                : "Resume landscape animation"
+            motion ? "Pause landscape animation" : "Resume landscape animation"
           }
           aria-pressed={!motion}
-          disabled={reduced}
         >
           <span
             className={
