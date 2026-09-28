@@ -1,12 +1,15 @@
 # Landscape editing guide
 
-The background is an original, procedural blue-dusk Suzhou landscape: moon at upper right, misty mountains, river, stone arch bridge with an abstract bank, willow at left, and reeds in the shallows. Keep the center open for the small serif title, links, and questions. Movement should remain quiet and secondary to reading.
+The background is an original, procedural blue-dusk Suzhou landscape: moon at upper right, misty mountains, river, stone arch bridge with softly washed banks, willow at left, and reeds in the shallows. Keep the center open for the small serif title, links, and questions. Movement should remain quiet and secondary to reading.
 
 ## Where to edit
 
 | File | Responsibility |
 | --- | --- |
 | `src/components/landscape/painting.ts` | Seeded Canvas 2D artwork, layer depths, portrait composition, wind masks, static fallback. |
+| `src/components/landscape/bridgeGeometry.ts` | Pure bridge dimensions, circular arch, deck profile, shared water-camera projection, and mirrored world heights. |
+| `src/components/landscape/bridge.ts` | Painterly bridge tones, arch barrel, low parapets, level treads, and sparse mineral/joint marks. |
+| `src/components/landscape/banks.ts` | Crescent shore, receding headland, earth washes, grouped footing stones, and water contact marks. |
 | `src/components/landscape/Landscape.tsx` | Three.js planes, shared weather uniforms, parallax, animation clock, resize, fallback switching, disposal. |
 | `src/components/landscape/wind.ts` | Seeded, correlated wind velocity, integrated advection, plant springs, and delayed water response. |
 | `src/components/landscape/plantMotion.ts` | Linear RGB plant metadata and camera depth at reed roots. |
@@ -18,18 +21,28 @@ The background is an original, procedural blue-dusk Suzhou landscape: moon at up
 
 ## Rendering model
 
-`paintLandscape(w, h)` returns ordered `Painting` objects: a canvas, a parallax `depth`, a `kind`, and optional `windMap` and `fallback` canvases. The river's fallback canvas contains static ripple/moon highlights; its WebGL canvas omits them so highlights come entirely from moving surface normals. The drawing uses `seeded(41)`; changing the seed or random-call order changes subsequent details. Artwork is generated on initialization and resize, not on each frame or chat update.
+`paintLandscape(w, h)` returns ordered `Painting` objects: a canvas, a parallax `depth`, a `kind`, and optional `windMap` and `fallback` canvases. The river's fallback canvas contains static ripple/moon highlights; its WebGL canvas omits them so highlights come entirely from moving surface normals. The main drawing uses `seeded(41)`; changing the seed or random-call order changes subsequent details. Bridge materials use `seeded(127)` for both the solid and its reflection; banks use `seeded(289)`. The main sequence advances 9,778 samples where the former bridge/banks were drawn, preserving the established plants while architecture changes independently. Artwork is generated on initialization and resize, not on each frame or chat update.
 
-Three.js uses an orthographic camera and transparent full-screen planes. Their 1.055 overscan hides edges during movement. Depth testing is disabled: `renderOrder`, not physical Z, controls overlap. Painting order is moon, mountains, river, bridge, banks, reed shallows, reeds, willow wood, then foliage. The shader sky is order 0, geese 1.5, and mist 5.5 (between the river and bridge). Recheck these explicit orders if adding or moving layers.
+Three.js uses an orthographic camera and transparent full-screen planes. Their 1.055 overscan hides edges during movement. Depth testing is disabled: `renderOrder`, not physical Z, controls overlap. Painting order is moon, mountains, river, bridge reflection, bridge, banks, reed shallows, reeds, willow wood, then foliage. The shader sky is order 0, geese 1.5, and mist 5.5 (after the river, before the bridge reflection). Recheck these explicit orders if adding or moving layers.
 
 `kind` selects shader behavior:
 
 - `paint` → 0: static texture plus grain.
 - `water` → 1: moving reflections, ripples, and glints.
 - `willow` → 2 and `reeds` → 3: world-space bending followed by perspective projection. Wind maps store flexibility in R (0 pins a point, 1 allows full movement), camera depth / 16 m in G, and vertical rest distance from the attachment / 3 m in B. Keep these textures in `NoColorSpace`.
-- `shallows` → 4: reed-bed reflections use the river's wave distortion without adding a second layer of sky/moon lighting.
+- `shallows` → 4: bridge and reed-bed reflections use the river's wave distortion without adding a second layer of sky/moon lighting.
 
 Canvas coordinates run downward from the top; shader UV Y runs upward. `WATER_HORIZON = 0.295` in `composition.ts` supplies both the Canvas horizon (`h * 0.705`) and water shader. Plants and water share a virtual camera with `EYE_HEIGHT = 1.4` m and principal UV `(0.5, WATER_HORIZON)`. `moonPosition()` supplies the painted moon and shader light direction/radius. Portrait composition switches at `w / h < 0.85`; positions are recomputed, not merely cropped.
+
+## Bridge and banks
+
+The design takes its intimate garden scale from the tiny arch in Suzhou's [Master-of-Nets Garden](https://en.chinaculture.org/focus/focus/cities/2010-04/22/content_377545.htm), with the quiet stone silhouette and reflection of the Chinese-influenced Engetsu-kyo in [Koishikawa Korakuen](https://www.gotokyo.org/en/spot/24/index.html) as a second reference. It is an original interpretation, not a reconstruction. An image-generation concept was used for visual exploration only; all final scenery is drawn in code with no raster assets.
+
+`createBridgeGeometry()` projects a uniformly scaled, slightly oblique bridge through the river's camera. Preserve its world proportions across aspect ratios: portrait views crop the far approach rather than stretching the arch. Desktop placement exposes both landings; portrait placement shifts right to leave the existing left reed beds in water. A single circular segment defines the opening, barrel, and radial voussoirs, with constant ring thickness and masonry above the crown. Low continuous parapets, attached terminal stones, level treads, vertical risers, and a level crown landing make the structure legible. The rendering is deliberately painterly: three main tonal planes, broad faint mineral blooms, dry-brush striations, seven partial radial joint marks, and an interrupted coping highlight. Keep the barrel a single quiet blue shadow; do not restore the masonry grid, outlined barrel facets, bright bevels, or intermediate parapet posts. Precise projected construction supplies depth while sparse marks match the mountains and plants.
+
+Reflect world height across `y = 0` before projection, so each reflected point meets its own waterline even across the oblique span. The reflection and stone-contact marks use a separate depth-4 `shallows` layer beneath the solid bridge and banks; a soft fade and broken horizontal bands also work in the Canvas fallback. Keep both abutments embedded in land. The near shore sweeps in from the lower right as a broad crescent, opening an inlet toward the central water; the far headland recedes to the right edge. Use layered blue-green earth washes and a few grouped, rounded footing stones. Avoid narrow parallel-sided approaches, repeated rock edging, and lawn-like texture. Keep the arch opening free of bank fill and move reed beds with the shoreline so their roots stay in open shallows.
+
+Portrait placement starts from world scale 0.52 (desktop uses 0.65), then retains 62.5% of the near approach's projected height above the viewport bottom. Scaling the world model and camera distance together preserves the apparent bridge span and proportions. Reflections and bank contacts follow the shared camera projection. Portrait banks widen at the foot and shoulder while retaining those contacts. A lower, broader inner wash and shorter diagonal mineral strokes keep the bank from reading as a vertically stretched mound. Six mobile reed beds follow the inlet at staggered depths, including a close group in the open shallows beneath the arch rather than an isolated far-water group. Keep their roots clear of both shores and masonry, including at 320×800, and subtract the bank silhouette from mobile reed reflections so they do not spill onto dry land. Desktop coordinates, reed counts, and the plant random sequence remain unchanged.
 
 ## Wind and water
 
@@ -47,10 +60,11 @@ The river uses six fixed directional gravity/capillary waves, with `omega² = (9
 
 ## Details to preserve
 
+- **Mountains:** fade each painted layer's alpha smoothly from 8.5% of viewport height above the water horizon to 3.5% below it. This dissolves low ridge contours into the mist behind the bridge while retaining the higher silhouettes; a color wash alone leaves a traced edge.
 - **Willow:** the tree uses a local width of `max(w, h * 1.15)` and shifts left by 26% of the excess width. Narrow screens crop the canopy instead of squeezing it; wood, foliage, and wind masks share this translation. Do not reintroduce X-only scaling. `grow()` samples parent branches so joints remain connected. The woody skeleton is static; foliage is a separate layer. Leaf positions follow their hanging stem curves, and wind masks pin attachments even where masks overlap.
 - **Reeds:** keep roots in shallow water, not on dry banks. Submerged stems fade into soft bed shadows and broken reflections. Root masks stay dark so tips sway without the whole clump sliding across the water.
-- **Bridge:** keep the footing connected to its softly textured bank. Both use depth 4 so parallax cannot separate them. The approach is deliberately abstract, with no paved path.
-- **River:** preserve the alpha fade into distant mist; a hard texture edge previously produced a horizontal seam.
+- **Bridge:** bridge, banks, and bridge reflection all use depth 4 so parallax cannot separate them. Keep the earth approaches connected to both landings and water contact marks below shoreline rocks.
+- **River:** preserve the alpha fade into distant mist; a hard texture edge previously produced a horizontal seam. Mountain silhouettes mirror about the shared horizon, clip to the water below it, and receive a faint dark blue wash. Its opacity starts at zero with a smooth onset at the horizon, then fades toward the foreground; a nonzero first stop creates a straight seam. Do not copy the pale mountain colors directly: their bright inverted fills made the darker gaps look like upright submerged mountains. Both WebGL and the static fallback use the same reflected wash.
 - **Parallax:** depth is approximately maximum displacement in CSS pixels. Current values run from 2 for the moon to 5 for the willow. Keep tree and bridge motion subtle; text stays stationary.
 - **Geese:** 2–6 birds per flock, with individual wingbeats and brief glides. First arrival is after 12–24 animation seconds; flights last 18–28 seconds, followed by 55–120 quiet seconds. The schedule survives resize and uses the shared animation clock rather than wall-clock timers.
 
@@ -58,7 +72,7 @@ The river uses six fixed directional gravity/capillary waves, with `omega² = (9
 
 Rendering is capped at 30 fps and device pixel ratio 1.5. Painting resolution scales by `min(1.5, 1600 / width, 1400 / height)`; resize is debounced by 160 ms. Mouse parallax requires a fine pointer. Single-finger touchstart/touchmove use the same clamped viewport coordinates through passive listeners, so Safari native scrolling can continue after pointer cancellation. Touch release, cancellation, or multiple fingers return the target to center; never disable scrolling or pinch zoom to enable parallax. Pause state lives only in React memory and is never read from or written to browser storage. Each page load starts unpaused. System reduced-motion preferences are not consulted; the page toggle alone freezes animation. As a separate performance measure, hidden tabs do not advance the clock or render.
 
-WebGL initialization failure or context loss switches to `drawFallback()`, which composites the same artwork over a static sky. It has no shader movement or geese and remains active until remount/reload. Inspect `.landscape[data-renderer]` (`webgl` or `canvas2d`) when debugging.
+WebGL initialization failure or context loss switches to `drawFallback()`, which composites the same artwork over a static sky. It has no shader movement or geese and remains active until remount/reload. Both initialization paths clamp the painting dimensions to at least one pixel, including a hidden or not-yet-measured host. Inspect `.landscape[data-renderer]` (`webgl` or `canvas2d`) when debugging.
 
 Register new textures/materials for disposal, including wind maps. Dispose bird geometry, cancel animation frames and resize timers, disconnect observers, and remove listeners on teardown. Resizing rebuilds textures but must not restart the flock schedule or leak GPU resources.
 
@@ -69,4 +83,4 @@ CI=true npm test -- --watchAll=false --runInBand src/components/landscape
 npm run build
 ```
 
-The scene tests cover shared wind state and fixed wave orientation across pause/hidden tabs/resize, touch parallax and listener cleanup, wind-map disposal, initialization failure, and context loss/resize. Wind tests cover one profile per page, reproducibility, distinct seeds, bounds/continuity across compass headings, opposite-wind responses, frame-rate independence, drag/spring response, and wave-energy decay; plant metadata tests check root-depth reprojection and RGB packing precision; geese tests cover scheduling, wings, and cleanup. They do not compile GLSL or judge visual quality. Inspect browser console for shader errors, desktop and narrow portrait screens, resize and pointer extremes, focused/answered chat contrast, manual pause/resume, and the Canvas 2D fallback. When changing plant projection, check pure ±X and ±Z wind: roots stay fixed, sideways bends reverse, and depth wind contracts/expands foliage with smaller motion at greater distance. Restore browser emulation and any forced context loss after checking.
+The scene tests cover shared wind state and fixed wave orientation across pause/hidden tabs/resize, touch parallax and listener cleanup, wind-map disposal, initialization failure, and context loss/resize. Wind tests cover one profile per page, reproducibility, distinct seeds, bounds/continuity across compass headings, opposite-wind responses, frame-rate independence, drag/spring response, and wave-energy decay; plant metadata tests check root-depth reprojection and RGB packing precision; geese tests cover scheduling, wings, and cleanup. Bridge geometry tests check springings, radial ring thickness, masonry clearance, responsive proportions, positive camera depth, and water-plane reflections. They do not compile GLSL or judge visual quality. Inspect browser console for shader errors, desktop and narrow portrait screens, resize and pointer extremes, focused/answered chat contrast, manual pause/resume, and the Canvas 2D fallback. For bridge changes, inspect open water through the barrel, connected bank landings, step depth, and reflected contact points. When changing plant projection, check pure ±X and ±Z wind: roots stay fixed, sideways bends reverse, and depth wind contracts/expands foliage with smaller motion at greater distance. Restore browser emulation and any forced context loss after checking.

@@ -1,5 +1,8 @@
 import { moonPosition, WATER_HORIZON } from "./composition";
 import { plantMaskColor, reedDepth } from "./plantMotion";
+import { paintBridge, paintBridgeWaterShadow } from "./bridge";
+import { paintBanks } from "./banks";
+import { createBridgeGeometry } from "./bridgeGeometry";
 
 // All landscape textures are drawn locally from seeded geometry. No image assets.
 export function seeded(seed: number) {
@@ -37,7 +40,6 @@ function contour(x: number, band: number) {
   );
 }
 export function paintLandscape(w: number, h: number): Painting[] {
-  const portrait = w / h < 0.85;
   const paintings: Painting[] = [];
   const random = seeded(41);
   const add = (depth: number, kind: Painting["kind"] = "paint") => {
@@ -138,6 +140,26 @@ export function paintLandscape(w: number, h: number): Painting[] {
     ctx.fillStyle = mist;
     ctx.fillRect(0, h * 0.6, w, h * 0.4);
     ctx.restore();
+    // Let low ridge edges disappear into the same mist as their painted faces.
+    // A color wash alone leaves the clipped contour legible behind the bridge.
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-in";
+    const mountainFade = ctx.createLinearGradient(
+      0,
+      h * (1 - WATER_HORIZON - 0.085),
+      0,
+      h * (1 - WATER_HORIZON + 0.035),
+    );
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16;
+      mountainFade.addColorStop(
+        t,
+        `rgba(255,255,255,${1 - t * t * (3 - 2 * t)})`,
+      );
+    }
+    ctx.fillStyle = mountainFade;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
   });
   // River with reflected mountains. The shader displaces this reflection gently.
   ctx = add(3, "water");
@@ -149,15 +171,31 @@ export function paintLandscape(w: number, h: number): Painting[] {
   water.addColorStop(1, "#345e70");
   ctx.fillStyle = water;
   ctx.fillRect(0, waterStart, w, h - waterStart);
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, waterStart, w, h);
-  ctx.clip();
-  ctx.globalAlpha = 0.13;
-  ctx.translate(0, horizon * 2);
-  ctx.scale(1, -1);
-  mountains.forEach((m) => ctx.drawImage(m, 0, 0));
-  ctx.restore();
+  // Mirror the mountain silhouettes, then tint them as a faint dark water wash.
+  // Copying their pale land colors made the unpainted water between reflections
+  // read as solid, upright mountains. Reflected peaks must point down instead.
+  const mountainReflection = surface(w, h);
+  const reflection = mountainReflection.ctx;
+  reflection.save();
+  reflection.translate(0, horizon * 2);
+  reflection.scale(1, -1);
+  reflection.globalAlpha = 0.42;
+  mountains.forEach((m) => reflection.drawImage(m, 0, 0));
+  reflection.restore();
+  reflection.globalCompositeOperation = "source-in";
+  const reflectedWash = reflection.createLinearGradient(0, horizon, 0, h);
+  // Fade in with zero slope at the horizon, then dissolve toward the viewer.
+  // A nonzero first stop exposes a straight seam across the mist.
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    const onset = Math.min(1, t / 0.28);
+    const fadeIn = onset * onset * (3 - 2 * onset);
+    const fadeOut = (1 - t) * (1 - t);
+    reflectedWash.addColorStop(t, `rgba(44,78,92,${0.16 * fadeIn * fadeOut})`);
+  }
+  reflection.fillStyle = reflectedWash;
+  reflection.fillRect(0, horizon, w, h - horizon);
+  ctx.drawImage(mountainReflection.canvas, 0, 0);
   // Only the static fallback needs painted highlights. WebGL derives all glints
   // from the wave normals, so no bright dashes remain glued to moving water.
   const river = ctx;
@@ -201,237 +239,39 @@ export function paintLandscape(w: number, h: number): Painting[] {
     waterContext.fillRect(0, 0, w, h);
     waterContext.restore();
   }
-  // Stone bridge. A true open arch, with irregular blocks and a curved parapet.
+  // Built scenery uses independent seeds so material edits do not regenerate plants.
+  // Retain the 9,778 samples consumed by the former bridge and bank artwork.
+  for (let i = 0; i < 9778; i++) random();
+  const reflectedBridge = add(4, "shallows");
+  paintBridge(reflectedBridge, w, h, seeded(127), true);
+  reflectedBridge.save();
+  reflectedBridge.globalCompositeOperation = "destination-in";
+  const geometry = createBridgeGeometry(w, h);
+  const waterline = geometry.project(0, 0).y;
+  const reflectionFade = reflectedBridge.createLinearGradient(
+    0,
+    waterline,
+    0,
+    waterline + geometry.scale * 2.7,
+  );
+  reflectionFade.addColorStop(0, "rgba(255,255,255,.19)");
+  reflectionFade.addColorStop(0.5, "rgba(255,255,255,.09)");
+  reflectionFade.addColorStop(1, "rgba(255,255,255,0)");
+  reflectedBridge.fillStyle = reflectionFade;
+  reflectedBridge.fillRect(0, 0, w, h);
+  // Broken reflected silhouettes remain legible in the still Canvas fallback too.
+  reflectedBridge.globalCompositeOperation = "destination-out";
+  for (let y = waterline; y < h; y += Math.max(2, h * 0.0036)) {
+    reflectedBridge.fillStyle = `rgba(0,0,0,${0.14 + 0.12 * Math.sin(y * 0.43)})`;
+    reflectedBridge.fillRect(0, y, w, Math.max(0.6, h * 0.0009));
+  }
+  reflectedBridge.restore();
+  paintBridgeWaterShadow(reflectedBridge, w, h);
   ctx = add(4);
-  const bx = w * (portrait ? 0.53 : 0.665),
-    by = h * (portrait ? 0.83 : 0.81);
-  const bw = w * (portrait ? 0.64 : 0.4),
-    bh = h * (portrait ? 0.083 : 0.125);
-  // Visible stair treads give the bridge a walkable top surface. The lower
-  // tread uses the same two corners as the quay, rather than meeting at a point.
-  const tread = (t: number, back: boolean) => {
-    const u = 1 - t;
-    const x =
-      bx + bw * (3 * u * u * t * 0.15 + 3 * u * t * t * 0.77 + t * t * t);
-    const y =
-      by +
-      bh *
-        (u * u * u * 0.56 -
-          3 * u * u * t * 0.89 -
-          3 * u * t * t * 0.99 +
-          t * t * t * 0.08);
-    return {
-      x: x - (back ? w * 0.034 * (1 - t * 0.65) : 0),
-      y: y - (back ? h * 0.014 * (1 - t * 0.65) : 0),
-    };
-  };
-  ctx.beginPath();
-  for (let i = 0; i <= 60; i++) {
-    const p = tread(i / 60, false);
-    i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
-  }
-  for (let i = 60; i >= 0; i--) {
-    const p = tread(i / 60, true);
-    ctx.lineTo(p.x, p.y);
-  }
-  ctx.closePath();
-  ctx.fillStyle = "#899b97";
-  ctx.fill();
-  for (let i = 0; i <= 45; i++) {
-    const a = tread(i / 45, false),
-      b = tread(i / 45, true);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = "rgba(50,76,79,.45)";
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  }
-  const bridge = (c: CanvasRenderingContext2D) => {
-    c.beginPath();
-    c.moveTo(bx, by + bh * 0.6);
-    c.bezierCurveTo(
-      bx + bw * 0.15,
-      by - bh * 0.85,
-      bx + bw * 0.77,
-      by - bh * 0.95,
-      bx + bw,
-      by + bh * 0.12,
-    );
-    c.lineTo(bx + bw, by + bh * 0.9);
-    c.lineTo(bx + bw * 0.81, by + bh * 0.9);
-    c.bezierCurveTo(
-      bx + bw * 0.72,
-      by - bh * 0.23,
-      bx + bw * 0.34,
-      by - bh * 0.39,
-      bx + bw * 0.21,
-      by + bh * 0.91,
-    );
-    c.lineTo(bx, by + bh * 0.91);
-    c.closePath();
-  };
-  bridge(ctx);
-  ctx.fillStyle = "#536f78";
-  ctx.fill();
-  ctx.save();
-  bridge(ctx);
-  ctx.clip();
-  const stone = ctx.createLinearGradient(0, by - bh, 0, by + bh);
-  stone.addColorStop(0, "#9ba9a7");
-  stone.addColorStop(0.6, "#68838a");
-  stone.addColorStop(1, "#425e69");
-  ctx.fillStyle = stone;
-  ctx.fillRect(bx, by - bh, bw, bh * 2);
-  for (let row = 0; row < 12; row++) {
-    const y = by - bh + row * bh * 0.17;
-    ctx.strokeStyle = "rgba(35,67,77,.23)";
-    ctx.lineWidth = 0.65;
-    ctx.beginPath();
-    ctx.moveTo(bx, y);
-    ctx.lineTo(bx + bw, y);
-    ctx.stroke();
-    for (let col = 0; col < 19; col++) {
-      const x = bx + ((col + (row % 2) * 0.5) * bw) / 17;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + (random() - 0.5) * 4, y + bh * 0.17);
-      ctx.stroke();
-    }
-  }
-  for (let i = 0; i < 1200; i++) {
-    ctx.fillStyle = `rgba(211,209,188,${random() * 0.06})`;
-    ctx.fillRect(
-      bx + random() * bw,
-      by - bh + random() * bh * 2,
-      random() * 7,
-      1,
-    );
-  }
-  ctx.restore();
-  // Arch voussoirs follow its inner curve.
-  for (let t = 0.04; t < 0.99; t += 0.045) {
-    const x = bx + bw * (0.21 + t * 0.6),
-      archY = by + bh * (0.9 - 1.4 * Math.sin(Math.PI * t));
-    ctx.strokeStyle = "rgba(189,198,181,.38)";
-    ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(x, archY);
-    ctx.lineTo(x + (t - 0.5) * bh * 0.24, archY - bh * 0.12);
-    ctx.stroke();
-  }
-  ctx.beginPath();
-  ctx.moveTo(bx, by + bh * 0.54);
-  ctx.bezierCurveTo(
-    bx + bw * 0.15,
-    by - bh * 0.91,
-    bx + bw * 0.77,
-    by - bh * 1.01,
-    bx + bw,
-    by + bh * 0.06,
-  );
-  ctx.strokeStyle = "#c0c4b4";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  // Sparse uprights rather than a heavy railing.
-  for (let i = 0; i <= 22; i++) {
-    const t = i / 22,
-      u = 1 - t;
-    const x =
-      bx + bw * (3 * u * u * t * 0.15 + 3 * u * t * t * 0.77 + t * t * t);
-    const y =
-      by +
-      bh *
-        (u * u * u * 0.54 -
-          3 * u * u * t * 0.91 -
-          3 * u * t * t * 1.01 +
-          t * t * t * 0.06);
-    ctx.strokeStyle = "#8c9f9e";
-    ctx.lineWidth = portrait ? 2.2 : 3.2;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, y - bh * 0.13);
-    ctx.stroke();
-  }
-  // Banks and reeds anchor the painting at its lower edges.
+  paintBridge(ctx, w, h, seeded(127));
   ctx = add(4);
-  ctx.fillStyle = "#355965";
-  ctx.beginPath();
-  ctx.moveTo(0, h * 0.9);
-  ctx.bezierCurveTo(w * 0.055, h * 0.87, w * 0.13, h * 0.94, w * 0.31, h);
-  ctx.lineTo(0, h);
-  ctx.fill();
-  ctx.fillStyle = "#426773";
-  ctx.beginPath();
-  ctx.moveTo(w, h * 0.86);
-  ctx.bezierCurveTo(w * 0.92, h * 0.87, w * 0.88, h * 0.96, w * 0.83, h);
-  ctx.lineTo(w, h);
-  ctx.fill();
-  // An irregular, softly washed bank rises to the bridge's first step.
-  // The bridge and its footing share parallax depth so their contact stays fixed.
-  const deck = by + bh * 0.56,
-    foot = by + bh * 0.91;
-  ctx.beginPath();
-  ctx.moveTo(bx - w * 0.23, h * 1.04);
-  ctx.bezierCurveTo(
-    bx - w * 0.16,
-    h * 0.99,
-    bx - w * 0.13,
-    deck + h * 0.04,
-    bx - w * 0.04,
-    deck - h * 0.013,
-  );
-  ctx.bezierCurveTo(
-    bx - w * 0.022,
-    deck - h * 0.022,
-    bx - w * 0.007,
-    deck - h * 0.01,
-    bx,
-    deck + h * 0.001,
-  );
-  ctx.bezierCurveTo(
-    bx + bw * 0.045,
-    foot - h * 0.007,
-    bx + bw * 0.15,
-    foot - h * 0.005,
-    bx + bw * 0.215,
-    foot + h * 0.004,
-  );
-  ctx.bezierCurveTo(
-    bx + bw * 0.25,
-    foot + h * 0.026,
-    bx + bw * 0.19,
-    h * 0.99,
-    bx + bw * 0.31,
-    h * 1.04,
-  );
-  ctx.closePath();
-  const bank = ctx.createLinearGradient(bx - w * 0.1, deck, bx, h);
-  bank.addColorStop(0, "#718983");
-  bank.addColorStop(0.22, "#597a77");
-  bank.addColorStop(1, "#345a64");
-  ctx.fillStyle = bank;
-  ctx.fill();
-  ctx.save();
-  ctx.clip();
-  // Broken mineral and moss washes, with no outlined paving or regular grid.
-  for (let i = 0; i < 950; i++) {
-    const x = bx - w * 0.24 + random() * w * 0.43,
-      y = deck + random() * (h - deck);
-    ctx.fillStyle = `rgba(${i % 3 ? "126,151,131" : "35,74,76"},${0.025 + random() * 0.07})`;
-    ctx.beginPath();
-    ctx.ellipse(
-      x,
-      y,
-      w * (0.002 + random() * 0.014),
-      h * (0.001 + random() * 0.004),
-      -0.4,
-      0,
-      Math.PI * 2,
-    );
-    ctx.fill();
-  }
-  ctx.restore();
+  paintBanks(ctx, reflectedBridge, w, h, seeded(289));
+  const bankCanvas = ctx.canvas;
   // Reed beds include submerged stems and reflections beneath their living foliage.
   const shallows = add(3, "shallows");
   ctx = add(3, "reeds");
@@ -531,14 +371,25 @@ export function paintLandscape(w: number, h: number): Painting[] {
     }
   };
   // Uneven patches stand clear of both dry banks and the bridge approach.
-  const patches = [
-    [0.085, 0.891, 18, 0.105],
-    [0.15, 0.921, 22, 0.1],
-    [0.225, 0.953, 19, 0.092],
-    [0.29, 0.985, 12, 0.072],
-    [0.84, 0.966, 20, 0.09],
-    [0.91, 0.898, 15, 0.08],
-  ];
+  // Portrait groups follow the inlet and the open shallows beneath the arch.
+  // Keep counts and order identical so repositioning does not reseed the willow.
+  const patches = geometry.portrait
+    ? [
+        [0.075, 0.91, 18, 0.09],
+        [0.155, 0.943, 22, 0.09],
+        [0.205, 0.976, 19, 0.08],
+        [0.33, 0.85, 12, 0.046],
+        [0.19, 0.882, 20, 0.068],
+        [0.87, 0.924, 15, 0.057],
+      ]
+    : [
+        [0.085, 0.891, 18, 0.105],
+        [0.15, 0.921, 22, 0.1],
+        [0.225, 0.953, 19, 0.092],
+        [0.36, 0.961, 12, 0.072],
+        [0.49, 0.947, 20, 0.085],
+        [0.83, 0.865, 15, 0.068],
+      ];
   for (const [x, y, count, size] of patches) {
     // Broad, almost invisible submerged color joins the patch to the shallows.
     shallows.save();
@@ -587,6 +438,13 @@ export function paintLandscape(w: number, h: number): Painting[] {
       );
       shallows.stroke();
     }
+  }
+  if (geometry.portrait) {
+    // The close bridge-side bed reflects into water, never onto the dry shore.
+    shallows.save();
+    shallows.globalCompositeOperation = "destination-out";
+    shallows.drawImage(bankCanvas, 0, 0);
+    shallows.restore();
   }
   // Willow, grown from a deterministic branching skeleton.
   ctx = add(5);

@@ -256,8 +256,8 @@ function Landscape({ motion }: { motion: boolean }) {
       frame = requestAnimationFrame(render);
     } catch {
       if (!paintings.length) {
-        width = container.clientWidth;
-        height = container.clientHeight;
+        width = Math.max(1, container.clientWidth);
+        height = Math.max(1, container.clientHeight);
         paintings = paintLandscape(width, height);
       }
       showFallback();

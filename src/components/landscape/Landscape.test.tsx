@@ -147,7 +147,7 @@ test("all layers share weather that survives pause, hidden tabs, and resize", ()
   const waterKinds = materials()
     .map((material) => material.uniforms.uKind.value)
     .filter((kind) => kind === 1 || kind === 4);
-  expect(waterKinds.sort()).toEqual([1, 4]);
+  expect(waterKinds.sort()).toEqual([1, 4, 4]);
   rerender(<Landscape motion={false} />);
   act(() => frame(200));
   const stopped = snapshot();
