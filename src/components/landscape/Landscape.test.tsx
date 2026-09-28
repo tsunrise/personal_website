@@ -108,10 +108,10 @@ afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
 test("frames are throttled, rerenders retain the scene, and cleanup releases textures and capture", () => {
   const { rerender, unmount, getByRole } = render(<Landscape />);
-  tick(); tick(16);
+  tick(); tick(8);
   expect(mockRenderer.render).toHaveBeenCalledTimes(1);
   rerender(<Landscape />);
-  tick(24);
+  tick(8);
   expect(mockRenderer.render).toHaveBeenCalledTimes(2);
   expect(THREE.WebGLRenderer).toHaveBeenCalledTimes(1);
   expect(materials().filter((m) => m.uniforms.uWindMap).map((m) => m.uniforms.uKind.value).sort()).toEqual([2, 3]);
@@ -129,6 +129,15 @@ test("frames are throttled, rerenders retain the scene, and cleanup releases tex
   expect(disconnect).toHaveBeenCalled();
   expect(mockRenderer.dispose).toHaveBeenCalledTimes(1);
   expect(window.cancelAnimationFrame).toHaveBeenCalled();
+});
+
+test.each([60, 120, 144])("targets 60 fps on a %i Hz display without changing animation speed", (refreshRate) => {
+  render(<Landscape />);
+  tick();
+  mockRenderer.render.mockClear();
+  for (let i = 0; i < refreshRate; i++) tick(1000 / refreshRate);
+  expect(mockRenderer.render).toHaveBeenCalledTimes(60);
+  expect(materials()[0].uniforms.uTime.value).toBeCloseTo(1, 2);
 });
 
 test("shared weather and lighting survive hidden tabs and resize without catching up", () => {

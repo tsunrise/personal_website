@@ -12,6 +12,8 @@ import {
 } from "./moon";
 import { vertex, skyFragment, paintFragment, moonFragment, mistFragment } from "./shaders";
 
+const FRAME_INTERVAL = 1000 / 60;
+
 function Landscape() {
   const host = useRef<HTMLDivElement>(null);
   const control = useRef<HTMLButtonElement>(null);
@@ -22,6 +24,7 @@ function Landscape() {
     let renderer: THREE.WebGLRenderer | undefined;
     let frame = 0, disposed = false, fallback = false;
     let width = 1, height = 1, elapsed = 0, last = 0, dirty = true;
+    let nextFrame = 0;
     let paintings: Painting[] = [], ridges: Ridge[] = [];
     let moon = moonPosition(width, height), userPlaced = false, coverage = 0;
     let reset: { from: Moon; elapsed: number } | undefined;
@@ -225,8 +228,12 @@ function Landscape() {
     function render(now: number) {
       if (disposed) return;
       frame = requestAnimationFrame(render);
-      if (document.hidden) { last = 0; return; }
-      if (last && now - last < 1000 / 30) return;
+      if (document.hidden) { last = nextFrame = 0; return; }
+      // Allow timestamp jitter and retain the cadence on high-refresh displays.
+      if (now + 1 < nextFrame) return;
+      nextFrame = nextFrame
+        ? nextFrame + Math.max(1, Math.floor((now - nextFrame) / FRAME_INTERVAL) + 1) * FRAME_INTERVAL
+        : now + FRAME_INTERVAL;
       const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
       last = now;
       if (reset) {
@@ -331,7 +338,7 @@ function Landscape() {
       const p = localPoint(e.touches[0]);
       follow(p.x, p.y);
     };
-    const visibility = () => { last = 0; if (document.hidden) releaseDrag(true); dirty = true; };
+    const visibility = () => { last = nextFrame = 0; if (document.hidden) releaseDrag(true); dirty = true; };
     const lost = (e: Event) => { e.preventDefault(); showFallback(); };
     try {
       renderer = new THREE.WebGLRenderer({ alpha: false, antialias: false, powerPreference: "low-power" });
