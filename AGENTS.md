@@ -9,8 +9,8 @@ React 18, TypeScript, and Create React App. See [README.md](README.md) for insta
 - `src/components/salieri/Composer.tsx`: editable prompt and Turnstile lifecycle. Focusing the input does not fetch or display candidate questions.
 - `src/components/salieri/service.ts`: remote API, streaming, cancellation, and chat state.
 - `src/components/landscape/`: procedural artwork, draggable moon and shared lighting, Three.js shaders, and shared breeze physics in `wind.ts`; `bridgeGeometry.ts` shares the water camera with the painted bridge in `bridge.ts` and shoreline washes in `banks.ts`. Read [docs/landscape.md](docs/landscape.md) before changing the scene, including water/moon coordinates, mobile proportions, and touch interaction. The moon starts at its default position on each page load; movement is not persisted. The animation clock freezes while the page is hidden; there is no manual pause control.
-- `src/components/Dialog.tsx`, `privacy.tsx`: accessible dialogs; `src/images/qr-code.svg`: WeChat QR code.
-- `public/`: page metadata, icons, privacy policy, verification files, and public keys.
+- `src/components/Dialog.tsx`: accessible WeChat dialog; `src/images/qr-code.svg`: WeChat QR code.
+- `public/`: page metadata, icons, verification files, and public keys.
 - Tests live beside components; `src/setupTests.ts` configures the test environment.
 
 ## Implementation rules

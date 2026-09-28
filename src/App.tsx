@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useState } from "react";
 import Dialog from "./components/Dialog";
-import { PrivacyDialog } from "./components/privacy";
 import Composer from "./components/salieri/Composer";
 import {
   SalieriAPIBackend,
@@ -16,7 +15,7 @@ export default function App({
   backend?: SalieriBackend;
 }) {
   const [draft, setDraft] = useState("");
-  const [dialog, setDialog] = useState<"wechat" | "privacy" | null>(null);
+  const [dialog, setDialog] = useState<"wechat" | null>(null);
   const resetUI = useCallback(() => {
     setDraft("");
   }, []);
@@ -132,10 +131,6 @@ export default function App({
         <div className="footer-links">
           <span>© Conghao Shen</span>
           <span aria-hidden="true">/</span>
-          <button type="button" onClick={() => setDialog("privacy")}>
-            Privacy
-          </button>
-          <span aria-hidden="true">/</span>
           <a
             href="https://github.com/tsunrise/personal_website"
             target="_blank"
@@ -154,9 +149,6 @@ export default function App({
           />
           <p className="dialog__caption">Scan with WeChat to say hello.</p>
         </Dialog>
-      )}
-      {dialog === "privacy" && (
-        <PrivacyDialog onClose={() => setDialog(null)} />
       )}
     </div>
   );
