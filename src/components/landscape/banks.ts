@@ -1,4 +1,5 @@
 import { createBridgeGeometry } from "./bridgeGeometry";
+import { normalColor } from "./lighting";
 
 type Point = { x: number; y: number };
 type Random = () => number;
@@ -10,6 +11,7 @@ export function paintBanks(
   w: number,
   h: number,
   random: Random,
+  normalCtx?: CanvasRenderingContext2D,
 ) {
   const g = createBridgeGeometry(w, h);
   const s = g.scale;
@@ -144,6 +146,20 @@ export function paintBanks(
     contact.lineWidth = s * 0.06;
     contact.stroke();
     fill(outline, distant ? "#718986" : "#6a8581");
+    if (normalCtx) {
+      trace(normalCtx, outline);
+      normalCtx.closePath();
+      // The broad shore rolls from the river-facing slope into flatter earth.
+      // Interpolated encoded normals are normalized again by the material shader.
+      const slope = normalCtx.createLinearGradient(
+        distant ? farToe.x : toe.x - s * 0.8, landing.y,
+        distant ? w + s : w, h,
+      );
+      slope.addColorStop(0, normalColor(-0.48, 0.79, -0.37));
+      slope.addColorStop(1, normalColor(0.13, 0.95, -0.28));
+      normalCtx.fillStyle = slope;
+      normalCtx.fill();
+    }
     ctx.save();
     ctx.clip();
     const wash = ctx.createLinearGradient(0, landing.y, w * 0.18, h * 1.05);
@@ -154,28 +170,41 @@ export function paintBanks(
     ctx.fillRect(0, 0, w, h);
     // A broad secondary earth plane, as spare as the painted mountain ridges.
     if (!distant) {
-      ctx.beginPath();
-      ctx.moveTo(w * (g.portrait ? 0.18 : 0.46), h * 1.08);
-      ctx.bezierCurveTo(
-        w * (g.portrait ? 0.36 : 0.6),
-        h * 1.003,
-        landing.x - s * 0.13,
-        landing.y + s * 1.24,
-        landing.x + s * (g.portrait ? 0.35 : 0.15),
-        landing.y + s * (g.portrait ? 0.65 : 0.41),
-      );
-      ctx.bezierCurveTo(
-        landing.x + s * (g.portrait ? 1.3 : 0.42),
-        landing.y + s * (g.portrait ? 0.8 : 1.54),
-        w * 0.9,
-        h * 0.992,
-        w * 1.06,
-        h * 1.012,
-      );
-      ctx.lineTo(w * 1.06, h * 1.08);
-      ctx.closePath();
+      const earthPlane = (target: CanvasRenderingContext2D) => {
+        target.beginPath();
+        target.moveTo(w * (g.portrait ? 0.18 : 0.46), h * 1.08);
+        target.bezierCurveTo(
+          w * (g.portrait ? 0.36 : 0.6),
+          h * 1.003,
+          landing.x - s * 0.13,
+          landing.y + s * 1.24,
+          landing.x + s * (g.portrait ? 0.35 : 0.15),
+          landing.y + s * (g.portrait ? 0.65 : 0.41),
+        );
+        target.bezierCurveTo(
+          landing.x + s * (g.portrait ? 1.3 : 0.42),
+          landing.y + s * (g.portrait ? 0.8 : 1.54),
+          w * 0.9,
+          h * 0.992,
+          w * 1.06,
+          h * 1.012,
+        );
+        target.lineTo(w * 1.06, h * 1.08);
+        target.closePath();
+      };
+      earthPlane(ctx);
       ctx.fillStyle = "rgba(38,73,80,.08)";
       ctx.fill();
+      if (normalCtx) {
+        normalCtx.save();
+        trace(normalCtx, outline);
+        normalCtx.closePath();
+        normalCtx.clip();
+        earthPlane(normalCtx);
+        normalCtx.fillStyle = normalColor(-0.12, 0.83, -0.54);
+        normalCtx.fill();
+        normalCtx.restore();
+      }
     }
     // Thin, translucent mineral striations share the distant hills' wash texture.
     for (let i = 0; i < (distant ? 95 : 390); i++) {
@@ -250,38 +279,58 @@ export function paintBanks(
       point(x + r, y - rise * 0.12),
       point(x + r * 0.59, y + rise * 0.045),
     ];
-    ctx.beginPath();
-    const last = points[points.length - 1];
-    ctx.moveTo((last.x + points[0].x) * 0.5, (last.y + points[0].y) * 0.5);
-    points.forEach((p, i) => {
-      const next = points[(i + 1) % points.length];
-      ctx.quadraticCurveTo(
-        p.x,
-        p.y,
-        (p.x + next.x) * 0.5,
-        (p.y + next.y) * 0.5,
-      );
-    });
-    ctx.closePath();
+    const stoneOutline = (target: CanvasRenderingContext2D) => {
+      target.beginPath();
+      const last = points[points.length - 1];
+      target.moveTo((last.x + points[0].x) * 0.5, (last.y + points[0].y) * 0.5);
+      points.forEach((p, i) => {
+        const next = points[(i + 1) % points.length];
+        target.quadraticCurveTo(
+          p.x,
+          p.y,
+          (p.x + next.x) * 0.5,
+          (p.y + next.y) * 0.5,
+        );
+      });
+      target.closePath();
+    };
+    stoneOutline(ctx);
     ctx.fillStyle = "#4c6e70";
     ctx.fill();
+    if (normalCtx) {
+      stoneOutline(normalCtx);
+      normalCtx.fillStyle = normalColor(0.05, 0.3, -0.95);
+      normalCtx.fill();
+    }
     ctx.save();
     ctx.clip();
-    ctx.beginPath();
-    ctx.moveTo(x - r, y - rise);
-    ctx.lineTo(x + r, y - rise);
-    ctx.bezierCurveTo(
-      x + r * 0.43,
-      y - rise * 0.21,
-      x - r * 0.27,
-      y - rise * 0.53,
-      x - r * 0.7,
-      y - rise * 0.16,
-    );
-    ctx.closePath();
+    const stoneTop = (target: CanvasRenderingContext2D) => {
+      target.beginPath();
+      target.moveTo(x - r, y - rise);
+      target.lineTo(x + r, y - rise);
+      target.bezierCurveTo(
+        x + r * 0.43,
+        y - rise * 0.21,
+        x - r * 0.27,
+        y - rise * 0.53,
+        x - r * 0.7,
+        y - rise * 0.16,
+      );
+      target.closePath();
+    };
+    stoneTop(ctx);
     ctx.fillStyle = "#758c81";
     ctx.fill();
     ctx.restore();
+    if (normalCtx) {
+      normalCtx.save();
+      stoneOutline(normalCtx);
+      normalCtx.clip();
+      stoneTop(normalCtx);
+      normalCtx.fillStyle = normalColor(-0.2, 0.94, -0.27);
+      normalCtx.fill();
+      normalCtx.restore();
+    }
     contact.beginPath();
     contact.ellipse(x, y + s * 0.025, r * 1.14, s * 0.035, 0, 0, Math.PI * 2);
     contact.fillStyle = "rgba(36,66,72,.17)";

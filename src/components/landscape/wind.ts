@@ -98,7 +98,7 @@ export function createWind(sample = sampleBreeze) {
     state,
     advance(dt: number) {
       if (!Number.isFinite(dt) || dt <= 0) return state;
-      // The render clock excludes hidden/paused time; bound unexpected long frames.
+      // The render clock excludes hidden time; bound unexpected long frames.
       remainder += Math.min(dt, 0.25);
       while (remainder + 1e-10 >= STEP) {
         remainder -= STEP;

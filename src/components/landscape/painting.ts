@@ -3,6 +3,8 @@ import { plantMaskColor, reedDepth } from "./plantMotion";
 import { paintBridge, paintBridgeWaterShadow } from "./bridge";
 import { paintBanks } from "./banks";
 import { createBridgeGeometry } from "./bridgeGeometry";
+import { lightResponse, lightingGain, normalColor } from "./lighting";
+import { OVERSCAN } from "./moon";
 
 // All landscape textures are drawn locally from seeded geometry. No image assets.
 export function seeded(seed: number) {
@@ -17,10 +19,15 @@ export function seeded(seed: number) {
 export interface Painting {
   canvas: HTMLCanvasElement;
   depth: number;
-  kind: "paint" | "water" | "willow" | "reeds" | "shallows";
+  kind: "paint" | "moon" | "water" | "willow" | "reeds" | "shallows";
   windMap?: HTMLCanvasElement;
   shadowMap?: HTMLCanvasElement;
   fallback?: HTMLCanvasElement;
+  normalMap?: HTMLCanvasElement;
+  lightStrength?: number;
+  twoSided?: boolean;
+  /** Exact mountain skyline in normalized UV coordinates, with Y pointing up. */
+  ridge?: { x: number; y: number }[];
 }
 function surface(w: number, h: number) {
   const canvas = document.createElement("canvas");
@@ -40,6 +47,16 @@ function contour(x: number, band: number) {
     Math.sin(x * 71 + band) * 0.0035
   );
 }
+/** Broad terrain planes omit the skyline's cusp and small brush-scale ridges. */
+function lightingContour(x: number, band: number) {
+  const center = Math.pow(Math.hypot(x - 0.51, 0.055) * 1.8, 0.8);
+  return (
+    0.7 -
+    center * (0.19 + band * 0.015) -
+    Math.sin(x * 12 + band * 1.8) * 0.035 -
+    Math.sin(x * 29 + band * 2.5) * 0.007
+  );
+}
 export function paintLandscape(w: number, h: number): Painting[] {
   const paintings: Painting[] = [];
   const random = seeded(41);
@@ -49,11 +66,12 @@ export function paintLandscape(w: number, h: number): Painting[] {
     return s.ctx;
   };
   // Moon: mineral washes and tiny craters, softened at the limb.
-  let ctx = add(2);
   const moonLocation = moonPosition(w, h);
-  const mx = w * moonLocation.x,
-    my = h * (1 - moonLocation.y);
-  const radius = h * moonLocation.radius;
+  const moonSprite = surface(Math.ceil(h * moonLocation.radius * 6), Math.ceil(h * moonLocation.radius * 6));
+  paintings.push({ canvas: moonSprite.canvas, depth: 2, kind: "moon" });
+  let ctx = moonSprite.ctx;
+  const radius = moonSprite.canvas.width / 6;
+  const mx = radius * 3, my = radius * 3;
   const halo = ctx.createRadialGradient(
     mx,
     my,
@@ -97,7 +115,12 @@ export function paintLandscape(w: number, h: number): Painting[] {
   const mountains: HTMLCanvasElement[] = [];
   ["#9bb1bc", "#839fae", "#638591"].forEach((color, band) => {
     ctx = add(2.5 + band);
-    mountains.push(paintings[paintings.length - 1].canvas);
+    const mountain = paintings[paintings.length - 1];
+    mountains.push(mountain.canvas);
+    mountain.ridge = [];
+    mountain.lightStrength = 0.24;
+    const normals = surface(w, h);
+    mountain.normalMap = normals.canvas;
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(-30, h);
@@ -108,6 +131,15 @@ export function paintLandscape(w: number, h: number): Painting[] {
         (band - 1) * h * 0.048 +
         (random() - 0.5) * h * 0.002;
       ctx.lineTo(x, y);
+      mountain.ridge.push({ x: x / w, y: 1 - y / h });
+      // Soft planes vary over a broad neighborhood; the exact painted skyline
+      // remains unchanged. Bounded slopes also keep portrait relighting gentle.
+      const broadSlope =
+        ((lightingContour(nx + 0.025, band) - lightingContour(nx - 0.025, band)) * h) /
+        (0.05 * w);
+      const slope = Math.tanh(broadSlope / 0.8) * 0.8;
+      normals.ctx.fillStyle = normalColor(slope * 0.85, 0.8, -0.28);
+      normals.ctx.fillRect(x - 1, 0, 4, h);
     }
     ctx.lineTo(w + 30, h);
     ctx.closePath();
@@ -216,14 +248,8 @@ export function paintLandscape(w: number, h: number): Painting[] {
     ctx.lineTo(x + random() * w * 0.065 * dist + 1, y);
     ctx.stroke();
   }
-  // Moon path, diffuse and broken by the current.
-  for (let i = 0; i < 200; i++) {
-    const y = horizon + random() * (h - horizon),
-      dist = (y - horizon) / (h - horizon);
-    const x = mx + (random() - 0.5) * radius * (0.7 + dist * 3.3);
-    ctx.fillStyle = `rgba(235,227,194,${random() * 0.11})`;
-    ctx.fillRect(x, y, random() * radius * 0.35 + 2, 0.5 + dist);
-  }
+  // Preserve the old moon-path random consumption; direct light is now live.
+  for (let i = 0; i < 800; i++) random();
   // Dissolve the river into the mist rather than exposing the texture's straight edge.
   for (const waterContext of [river, stillRiver.ctx]) {
     waterContext.save();
@@ -244,27 +270,37 @@ export function paintLandscape(w: number, h: number): Painting[] {
   // Built scenery uses independent seeds so material edits do not regenerate plants.
   // Retain the 9,778 samples consumed by the former bridge and bank artwork.
   for (let i = 0; i < 9778; i++) random();
-  const bridgeShadow = surface(w, h);
-  paintBridgeWaterShadow(bridgeShadow.ctx, w, h);
+  const shadowScale = Math.min(1, 640 / w, 560 / h);
+  const bridgeShadow = surface(
+    Math.max(1, Math.round(w * shadowScale)),
+    Math.max(1, Math.round(h * shadowScale)),
+  );
+  paintBridgeWaterShadow(bridgeShadow.ctx, bridgeShadow.canvas.width, bridgeShadow.canvas.height);
   riverPainting.shadowMap = bridgeShadow.canvas;
-  // The live shader reduces water lighting; the static fallback darkens its
-  // existing water colors with the same soft mask. No mirrored bridge image.
-  stillRiver.ctx.save();
-  stillRiver.ctx.globalAlpha = 0.18;
-  stillRiver.ctx.drawImage(bridgeShadow.canvas, 0, 0);
-  stillRiver.ctx.restore();
   const bankContact = add(4, "shallows");
   const geometry = createBridgeGeometry(w, h);
   ctx = add(4);
-  paintBridge(ctx, w, h, seeded(127));
+  const bridgeNormals = surface(w, h);
+  paintings[paintings.length - 1].normalMap = bridgeNormals.canvas;
+  paintings[paintings.length - 1].lightStrength = 0.32;
+  paintBridge(ctx, w, h, seeded(127), bridgeNormals.ctx);
   ctx = add(4);
-  paintBanks(ctx, bankContact, w, h, seeded(289));
+  const bankNormals = surface(w, h);
+  paintings[paintings.length - 1].normalMap = bankNormals.canvas;
+  paintings[paintings.length - 1].lightStrength = 0.26;
+  paintBanks(ctx, bankContact, w, h, seeded(289), bankNormals.ctx);
   const bankCanvas = ctx.canvas;
   // Reed beds include submerged stems and reflections beneath their living foliage.
   const shallows = add(3, "shallows");
   ctx = add(3, "reeds");
   const reedWind = surface(w, h);
   paintings[paintings.length - 1].windMap = reedWind.canvas;
+  const reedNormals = surface(w, h);
+  reedNormals.ctx.fillStyle = normalColor(0.15, 0.2, -1);
+  reedNormals.ctx.fillRect(0, 0, w, h);
+  paintings[paintings.length - 1].normalMap = reedNormals.canvas;
+  paintings[paintings.length - 1].lightStrength = 0.3;
+  paintings[paintings.length - 1].twoSided = true;
   // Phragmites (芦苇): arching leaves and airy seed plumes in uneven shoreline clumps.
   const reeds = (
     rootX: number,
@@ -323,21 +359,24 @@ export function paintLandscape(w: number, h: number): Painting[] {
         const side = (i + leaf) % 2 ? 1 : -1,
           length = stemHeight * (0.17 + random() * 0.16);
         ctx.fillStyle = `rgba(47,82,84,${0.35 + random() * 0.35})`;
-        ctx.beginPath();
-        ctx.moveTo(lx, ly);
-        ctx.quadraticCurveTo(
-          lx + side * length * 0.65,
-          ly - length * 0.45,
-          lx + side * length,
-          ly - length * 0.12,
-        );
-        ctx.quadraticCurveTo(
-          lx + side * length * 0.55,
-          ly - length * 0.24,
-          lx,
-          ly,
-        );
-        ctx.fill();
+        reedNormals.ctx.fillStyle = normalColor(side * 0.65, 0.35, -0.75);
+        for (const leafContext of [ctx, reedNormals.ctx]) {
+          leafContext.beginPath();
+          leafContext.moveTo(lx, ly);
+          leafContext.quadraticCurveTo(
+            lx + side * length * 0.65,
+            ly - length * 0.45,
+            lx + side * length,
+            ly - length * 0.12,
+          );
+          leafContext.quadraticCurveTo(
+            lx + side * length * 0.55,
+            ly - length * 0.24,
+            lx,
+            ly,
+          );
+          leafContext.fill();
+        }
       }
       if (i % 4 !== 0) {
         const plume = stemHeight * (0.16 + random() * 0.09);
@@ -436,6 +475,9 @@ export function paintLandscape(w: number, h: number): Painting[] {
   }
   // Willow, grown from a deterministic branching skeleton.
   ctx = add(5);
+  const woodNormals = surface(w, h);
+  paintings[paintings.length - 1].normalMap = woodNormals.canvas;
+  paintings[paintings.length - 1].lightStrength = 0.28;
   // Keep a minimum local aspect ratio instead of squeezing branches on phones.
   // Narrow viewports crop a wider tree at the left edge, preserving branch angles,
   // leaf shapes, and the shared coordinates of wood, foliage, and wind masks.
@@ -443,6 +485,7 @@ export function paintLandscape(w: number, h: number): Painting[] {
   const willowLeft = -(willowWidth - w) * 0.26;
   ctx.save();
   ctx.translate(willowLeft, 0);
+  woodNormals.ctx.translate(willowLeft, 0);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   type Limb = { points: number[]; width: number };
@@ -525,11 +568,35 @@ export function paintLandscape(w: number, h: number): Painting[] {
     }
     ctx.fillStyle = index < 4 ? "#315360" : "#3c606b";
     ctx.beginPath();
-    [...sides[0], ...sides[1].reverse()].forEach((p, i) =>
+    [...sides[0], ...sides[1].slice().reverse()].forEach((p, i) =>
       i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y),
     );
     ctx.closePath();
     ctx.fill();
+    // A few cylindrical strips turn the bark's illuminated rim toward the moon.
+    for (let j = 0; j < sides[0].length - 1; j++) {
+      const a = sides[0][j], b = sides[1][j];
+      const acrossX = a.x - b.x, acrossY = a.y - b.y;
+      const breadth = Math.hypot(acrossX, acrossY) || 1;
+      for (let strip = 0; strip < 8; strip++) {
+        const left = strip / 8, right = (strip + 1) / 8;
+        const side = left + right - 1;
+        woodNormals.ctx.fillStyle = normalColor(
+          acrossX / breadth * side, -acrossY / breadth * side,
+          -Math.sqrt(Math.max(0, 1 - side * side)),
+        );
+        woodNormals.ctx.beginPath();
+        [[j, left], [j, right], [j + 1, right], [j + 1, left]].forEach(([sampleIndex, t], i) => {
+          const first = sides[1][sampleIndex], second = sides[0][sampleIndex];
+          const x = first.x + (second.x - first.x) * t;
+          const y = first.y + (second.y - first.y) * t;
+          if (i) woodNormals.ctx.lineTo(x, y);
+          else woodNormals.ctx.moveTo(x, y);
+        });
+        woodNormals.ctx.closePath();
+        woodNormals.ctx.fill();
+      }
+    }
     // Fine broken bark follows the growth of each branch.
     for (let i = 0; i < 9; i++) {
       ctx.strokeStyle = `rgba(156,177,164,${0.025 + random() * 0.06})`;
@@ -551,6 +618,13 @@ export function paintLandscape(w: number, h: number): Painting[] {
   ctx = add(5, "willow");
   ctx.save();
   ctx.translate(willowLeft, 0);
+  const foliageNormals = surface(w, h);
+  foliageNormals.ctx.fillStyle = normalColor(0.1, 0.2, -1);
+  foliageNormals.ctx.fillRect(0, 0, w, h);
+  foliageNormals.ctx.translate(willowLeft, 0);
+  paintings[paintings.length - 1].normalMap = foliageNormals.canvas;
+  paintings[paintings.length - 1].lightStrength = 0.3;
+  paintings[paintings.length - 1].twoSided = true;
   const willowWind = surface(w, h);
   paintings[paintings.length - 1].windMap = willowWind.canvas;
   willowWind.ctx.translate(willowLeft, 0);
@@ -615,16 +689,19 @@ export function paintLandscape(w: number, h: number): Painting[] {
       const side = j % 2 ? 1 : -1,
         size = (2 + random() * 5) * (1 - t * 0.5);
       ctx.fillStyle = `rgba(${43 + Math.floor(random() * 22)},${77 + Math.floor(random() * 25)},${85 + Math.floor(random() * 20)},${0.28 + random() * 0.42})`;
-      ctx.beginPath();
-      ctx.moveTo(lx, ly);
-      ctx.quadraticCurveTo(
-        lx + side * size * 0.8,
-        ly + size * 0.45,
-        lx + side * size * 0.55,
-        ly + size * 2,
-      );
-      ctx.quadraticCurveTo(lx - side, ly + size * 0.4, lx, ly);
-      ctx.fill();
+      foliageNormals.ctx.fillStyle = normalColor(side * 0.55, 0.3, -0.85);
+      for (const leafContext of [ctx, foliageNormals.ctx]) {
+        leafContext.beginPath();
+        leafContext.moveTo(lx, ly);
+        leafContext.quadraticCurveTo(
+          lx + side * size * 0.8,
+          ly + size * 0.45,
+          lx + side * size * 0.55,
+          ly + size * 2,
+        );
+        leafContext.quadraticCurveTo(lx - side, ly + size * 0.4, lx, ly);
+        leafContext.fill();
+      }
     }
   }
   ctx.restore();
@@ -637,15 +714,239 @@ export function paintLandscape(w: number, h: number): Painting[] {
   }
   return paintings;
 }
-export function drawFallback(canvas: HTMLCanvasElement, paintings: Painting[]) {
+export interface FallbackOptions {
+  /** Viewport UV: +Y up, radius expressed as a fraction of viewport height. */
+  moon: { x: number; y: number; radius: number };
+  direction: readonly number[];
+  referenceDirection: readonly number[];
+  visibility: number;
+  mountainMask: HTMLCanvasElement;
+  /** Small displacement in CSS pixels, matching the scene's parallax clock. */
+  parallax: { x: number; y: number };
+}
+
+type RelightCache = {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  image: ImageData;
+  colors: Uint8ClampedArray;
+  normals: Float32Array;
+  normalAlpha: Uint8Array;
+  correction: ReturnType<typeof surface>;
+  reference: Float32Array;
+  referenceKey: string;
+  key: string;
+};
+const fallbackRelighting = new WeakMap<Painting, RelightCache | null>();
+const fallbackWater = new WeakMap<Painting, {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  glints: ReturnType<typeof surface>;
+}>();
+const fallbackMoon = new WeakMap<HTMLCanvasElement, ReturnType<typeof surface>>();
+
+/** Cache a modest CPU working image once; dragging never reads full-size textures. */
+function relitFallback(p: Painting, options: Pick<FallbackOptions,
+  "direction" | "referenceDirection" | "visibility">) {
+  if (!p.normalMap || !p.lightStrength) return p.fallback ?? p.canvas;
+  let cache = fallbackRelighting.get(p);
+  if (cache === undefined) {
+    try {
+      const scale = Math.min(1, 520 / p.canvas.width, 420 / p.canvas.height);
+      const w = Math.max(1, Math.round(p.canvas.width * scale));
+      const h = Math.max(1, Math.round(p.canvas.height * scale));
+      const correction = surface(w, h);
+      correction.ctx.drawImage(p.fallback ?? p.canvas, 0, 0, w, h);
+      const source = correction.ctx.getImageData(0, 0, w, h);
+      const metadata = surface(w, h);
+      metadata.ctx.drawImage(p.normalMap, 0, 0, w, h);
+      const packed = metadata.ctx.getImageData(0, 0, w, h);
+      if (!source?.data || !packed?.data) throw new Error("Pixel data unavailable");
+      const normals = new Float32Array(w * h * 3);
+      const normalAlpha = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const x = packed.data[i * 4] / 127.5 - 1;
+        const y = packed.data[i * 4 + 1] / 127.5 - 1;
+        const z = packed.data[i * 4 + 2] / 127.5 - 1;
+        const length = Math.hypot(x, y, z) || 1;
+        normals[i * 3] = x / length;
+        normals[i * 3 + 1] = y / length;
+        normals[i * 3 + 2] = z / length;
+        normalAlpha[i] = packed.data[i * 4 + 3];
+      }
+      cache = {
+        ...surface(p.canvas.width, p.canvas.height),
+        correction, image: source, colors: new Uint8ClampedArray(source.data),
+        normals, normalAlpha, reference: new Float32Array(w * h),
+        referenceKey: "", key: "",
+      };
+      cache.image.data.fill(0);
+    } catch {
+      // A canvas without pixel readback still retains the complete painted scene.
+      cache = null;
+    }
+    fallbackRelighting.set(p, cache);
+  }
+  if (!cache) return p.fallback ?? p.canvas;
+  const referenceKey = options.referenceDirection.join(",");
+  const key = `${options.direction.join(",")}:${options.visibility}:${referenceKey}`;
+  if (cache.key === key) return cache.canvas;
+  const strength = p.lightStrength;
+  const direction = options.direction, reference = options.referenceDirection;
+  for (let i = 0; i < cache.reference.length; i++) {
+    const pixel = i * 4, n = i * 3;
+    if (!cache.colors[pixel + 3] || !cache.normalAlpha[i]) continue;
+    const x = cache.normals[n], y = cache.normals[n + 1], z = cache.normals[n + 2];
+    if (cache.referenceKey !== referenceKey) {
+      cache.reference[i] = lightResponse(x, y, z, reference, p.twoSided);
+    }
+    const response = lightResponse(x, y, z, direction, p.twoSided);
+    const gain = lightingGain(response, cache.reference[i], options.visibility, strength);
+    // A low-resolution light correction sits atop the original full-resolution
+    // paint. Darkening preserves every brush mark, and brighter planes retain
+    // their high-frequency detail instead of replacing it with a small bitmap.
+    if (gain <= 1) {
+      cache.image.data[pixel] = 0;
+      cache.image.data[pixel + 1] = 0;
+      cache.image.data[pixel + 2] = 0;
+      cache.image.data[pixel + 3] = (1 - gain) * 255;
+    } else {
+      let opacity = 0;
+      for (let channel = 0; channel < 3; channel++) {
+        const base = cache.colors[pixel + channel] / 255;
+        const lit = Math.min(1, base * gain);
+        opacity = Math.max(opacity, (lit - base) / Math.max(1 - base, 0.0001));
+      }
+      for (let channel = 0; channel < 3; channel++) {
+        const base = cache.colors[pixel + channel] / 255;
+        const lit = Math.min(1, base * gain);
+        cache.image.data[pixel + channel] =
+          (base + (lit - base) / Math.max(opacity, 0.0001)) * 255;
+      }
+      cache.image.data[pixel + 3] = opacity * 255;
+    }
+  }
+  cache.referenceKey = referenceKey;
+  cache.key = key;
+  cache.correction.ctx.putImageData(cache.image, 0, 0);
+  cache.ctx.clearRect(0, 0, cache.canvas.width, cache.canvas.height);
+  cache.ctx.drawImage(p.fallback ?? p.canvas, 0, 0);
+  cache.ctx.save();
+  cache.ctx.globalCompositeOperation = "source-atop";
+  cache.ctx.drawImage(cache.correction.canvas, 0, 0, cache.canvas.width, cache.canvas.height);
+  cache.ctx.restore();
+  return cache.canvas;
+}
+
+function reflectedFallback(
+  p: Painting,
+  direction: readonly number[],
+  visibility: number,
+  shadowOffset: { x: number; y: number },
+) {
+  const w = p.canvas.width, h = p.canvas.height;
+  let working = fallbackWater.get(p);
+  if (!working) {
+    working = { ...surface(w, h), glints: surface(w, h) };
+    fallbackWater.set(p, working);
+  }
+  const { ctx, glints } = working;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(p.fallback ?? p.canvas, 0, 0);
+  // The flat-water limit of the shader's half-vector model. Moving the moon
+  // vertically changes the glint's depth instead of leaving a fixed bright strip.
+  glints.ctx.clearRect(0, 0, w, h);
+  const random = seeded(811);
+  for (let i = 0; i < 2400; i++) {
+    const x = random(), y = random() * WATER_HORIZON;
+    const length = 1 + random() * w * 0.017 * (1 - y / WATER_HORIZON);
+    const grain = random();
+    const vx = -(x - 0.5) * w / h, vy = WATER_HORIZON - y;
+    const distance = Math.hypot(vx, vy, 1);
+    const hx = vx / distance + direction[0];
+    const hy = vy / distance + direction[1];
+    const hz = -1 / distance + direction[2];
+    const slopeX = hx / Math.max(hy, 0.001), slopeZ = hz / Math.max(hy, 0.001);
+    const glow = Math.exp(-0.5 * ((slopeX / 0.09) ** 2 + (slopeZ / 0.075) ** 2));
+    const fade = Math.min(1, (WATER_HORIZON - y) / 0.065);
+    const alpha = glow * visibility * fade * (0.12 + grain * 0.18);
+    if (alpha < 0.001) continue;
+    glints.ctx.fillStyle = `rgba(240,224,180,${alpha})`;
+    glints.ctx.fillRect(x * w, (1 - y) * h, length, 0.5 + fade);
+  }
+  if (p.shadowMap) {
+    glints.ctx.save();
+    glints.ctx.globalCompositeOperation = "destination-out";
+    glints.ctx.globalAlpha = 0.85;
+    glints.ctx.drawImage(p.shadowMap, shadowOffset.x, shadowOffset.y, w, h);
+    glints.ctx.restore();
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = "source-atop";
+  if (p.shadowMap) {
+    ctx.globalAlpha = 0.18 * visibility;
+    ctx.drawImage(p.shadowMap, shadowOffset.x, shadowOffset.y, w, h);
+  }
+  ctx.globalAlpha = 1;
+  ctx.drawImage(glints.canvas, 0, 0);
+  ctx.restore();
+  return working.canvas;
+}
+
+export function drawFallback(
+  canvas: HTMLCanvasElement,
+  paintings: Painting[],
+  options?: FallbackOptions,
+) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const { width: w, height: h } = canvas;
+  const defaultMoon = moonPosition(w, h);
+  const light = [(defaultMoon.x - 0.5) * w / h, defaultMoon.y - WATER_HORIZON, 1];
+  const magnitude = Math.hypot(...light);
+  const defaultDirection = light.map((component) => component / magnitude);
+  const direction = options?.direction ?? defaultDirection;
+  const referenceDirection = options?.referenceDirection ?? defaultDirection;
+  const visibility = options?.visibility ?? 1;
+  const parallax = options?.parallax ?? { x: 0, y: 0 };
+  const moon = options?.moon ?? {
+    x: 0.5 + (defaultMoon.x - 0.5) * OVERSCAN,
+    y: 0.5 + (defaultMoon.y - 0.5) * OVERSCAN,
+    radius: defaultMoon.radius * OVERSCAN,
+  };
   const sky = ctx.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, "#526f95");
   sky.addColorStop(0.5, "#87a5b8");
   sky.addColorStop(1, "#bfc7bf");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, w, h);
-  paintings.forEach((p) => ctx.drawImage(p.fallback ?? p.canvas, 0, 0, w, h));
+  paintings.forEach((p) => {
+    if (p.kind === "moon") {
+      let working = fallbackMoon.get(canvas);
+      if (!working || working.canvas.width !== w || working.canvas.height !== h) {
+        working = surface(w, h);
+        fallbackMoon.set(canvas, working);
+      }
+      working.ctx.clearRect(0, 0, w, h);
+      const radius = moon.radius * h;
+      working.ctx.drawImage(p.canvas, moon.x * w - radius * 3,
+        (1 - moon.y) * h - radius * 3, radius * 6, radius * 6);
+      if (options?.mountainMask) {
+        working.ctx.save();
+        working.ctx.globalCompositeOperation = "destination-out";
+        working.ctx.drawImage(options.mountainMask, 0, 0, w, h);
+        working.ctx.restore();
+      }
+      ctx.drawImage(working.canvas, 0, 0);
+      return;
+    }
+    const layer = p.kind === "water"
+      ? reflectedFallback(p, direction, visibility, {
+        x: parallax.x * p.canvas.width / (w * OVERSCAN),
+        y: parallax.y * p.canvas.height / (h * OVERSCAN),
+      })
+      : relitFallback(p, { direction, referenceDirection, visibility });
+    ctx.drawImage(layer, -w * (OVERSCAN - 1) / 2 + parallax.x * p.depth,
+      -h * (OVERSCAN - 1) / 2 + parallax.y * p.depth, w * OVERSCAN, h * OVERSCAN);
+  });
 }

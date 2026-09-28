@@ -9,7 +9,7 @@ export interface Flight {
   seed: number;
 }
 
-// Time is the scene's animation clock: pausing or hiding the page also pauses arrivals.
+// Time is the scene's animation clock: hiding the page also pauses arrivals.
 export function createFlightSchedule(random: () => number = Math.random) {
   let next = 12 + random() * 12;
   let flight: Flight | null = null;

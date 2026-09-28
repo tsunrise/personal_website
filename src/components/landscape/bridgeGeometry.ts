@@ -105,3 +105,74 @@ export function createBridgeGeometry(width: number, height: number) {
 }
 
 export type BridgeGeometry = ReturnType<typeof createBridgeGeometry>;
+
+export type BridgeVertex = readonly [number, number, number];
+
+/** Rotate a local construction normal into the water camera's world axes. */
+export function bridgeNormal(g: BridgeGeometry, u: number, y: number, v: number) {
+  const length = Math.hypot(u, y, v) || 1;
+  return [
+    (u * g.cosAngle - v * g.sinAngle) / length,
+    y / length,
+    (u * g.sinAngle + v * g.cosAngle) / length,
+  ] as const;
+}
+
+/**
+ * Cast masonry onto water, clipping in camera space before perspective division.
+ * A low moon can put a shadow behind the eye; projecting those vertices first
+ * would turn it into an enormous, inverted polygon across the river.
+ */
+export function projectBridgeShadowPolygon(
+  g: BridgeGeometry,
+  vertices: readonly BridgeVertex[],
+  direction: readonly number[],
+  width: number,
+  height: number,
+) {
+  if (
+    direction.length < 3 ||
+    !direction.every(Number.isFinite) ||
+    direction[1] <= 1e-6
+  ) return [];
+  type GroundPoint = { x: number; z: number };
+  let points: GroundPoint[] = vertices.map(([u, y, v]) => {
+    const worldY = y * g.modelScale;
+    return {
+      x: g.cx + (u * g.cosAngle - v * g.sinAngle) * g.modelScale -
+        (worldY * direction[0]) / direction[1],
+      z: g.cz + (u * g.sinAngle + v * g.cosAngle) * g.modelScale -
+        (worldY * direction[2]) / direction[1],
+    };
+  });
+  const clip = (distance: (point: GroundPoint) => number) => {
+    const input = points;
+    points = [];
+    if (!input.length) return;
+    let previous = input[input.length - 1];
+    let previousDistance = distance(previous);
+    for (const point of input) {
+      const currentDistance = distance(point);
+      if ((currentDistance >= 0) !== (previousDistance >= 0)) {
+        const t = previousDistance / (previousDistance - currentDistance);
+        points.push({
+          x: previous.x + (point.x - previous.x) * t,
+          z: previous.z + (point.z - previous.z) * t,
+        });
+      }
+      if (currentDistance >= 0) points.push(point);
+      previous = point;
+      previousDistance = currentDistance;
+    }
+  };
+  clip(({ z }) => z - 1e-4);
+  const halfView = width / (2 * height);
+  clip(({ x, z }) => x + halfView * z);
+  clip(({ x, z }) => halfView * z - x);
+  clip(({ z }) => WATER_HORIZON * z - EYE_HEIGHT);
+  return points.map(({ x, z }) => ({
+    x: Math.max(0, Math.min(width, width * 0.5 + (height * x) / z)),
+    y: Math.max(0, Math.min(height,
+      height * (1 - WATER_HORIZON) + (height * EYE_HEIGHT) / z)),
+  }));
+}

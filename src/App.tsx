@@ -10,11 +10,6 @@ import {
 import wechatQRCode from "./images/qr-code.svg";
 const Landscape = lazy(() => import("./components/landscape/Landscape"));
 
-function useMotion() {
-  const [paused, setPaused] = useState(false);
-  const toggle = () => setPaused((p) => !p);
-  return { motion: !paused, toggle };
-}
 export default function App({
   backend = SalieriAPIBackend,
 }: {
@@ -26,7 +21,6 @@ export default function App({
     setDraft("");
   }, []);
   const service = useSalieri(backend, resetUI);
-  const { motion, toggle } = useMotion();
   const reading = service.question !== null;
   const answering = service.state === "answering";
   const changeDraft = (value: string) => {
@@ -46,7 +40,7 @@ export default function App({
           <div className="landscape landscape--loading" aria-hidden="true" />
         }
       >
-        <Landscape motion={motion} />
+        <Landscape />
       </Suspense>
       <a className="skip-link" href="#main">
         Skip to content
@@ -135,25 +129,6 @@ export default function App({
         </div>
       </main>
       <footer className="site-footer">
-        <button
-          className="motion-control"
-          type="button"
-          onClick={toggle}
-          aria-label={
-            motion ? "Pause landscape animation" : "Resume landscape animation"
-          }
-          aria-pressed={!motion}
-        >
-          <span
-            className={
-              motion ? "motion-symbol" : "motion-symbol motion-symbol--paused"
-            }
-            aria-hidden="true"
-          >
-            {motion ? "Ⅱ" : "▷"}
-          </span>
-          <span>{motion ? "pause" : "resume"}</span>
-        </button>
         <div className="footer-links">
           <span>© Conghao Shen</span>
           <span aria-hidden="true">/</span>

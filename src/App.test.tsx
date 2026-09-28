@@ -205,32 +205,6 @@ test("retired history links return to the landing page without a saved-answer UI
     screen.queryByText(/saved conversation|report abuse|salieri/i),
   ).not.toBeInTheDocument();
 });
-test("system reduced motion does not change the manual pause control", async () => {
-  (window.matchMedia as jest.Mock).mockReturnValue({
-    matches: true,
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-  });
-  const f = fixture();
-  render(<App backend={f.backend} />);
-  const pause = screen.getByRole("button", {
-    name: "Pause landscape animation",
-  });
-  expect(pause).toBeEnabled();
-  expect(window.matchMedia).not.toHaveBeenCalledWith(
-    "(prefers-reduced-motion: reduce)",
-  );
-  fireEvent.click(pause);
-  const resume = screen.getByRole("button", {
-    name: "Resume landscape animation",
-  });
-  expect(resume).toBeEnabled();
-  fireEvent.click(resume);
-  expect(
-    screen.getByRole("button", { name: "Pause landscape animation" }),
-  ).toHaveAttribute("aria-pressed", "false");
-});
-
 test("blank prompt has no placeholder; text activates dimming and only interactive verification becomes visible", async () => {
   const f = fixture();
   const { container } = render(<App backend={f.backend} />);
@@ -285,23 +259,15 @@ test("editing during streaming removes the answer and ignores its late updates",
   fireEvent.focus(input);
 });
 
-test("pause is temporary, ignores old saved preferences, and resets on a new mount", async () => {
+test("the page has no pause control and ignores retired motion preferences", async () => {
   localStorage.setItem("landscape-paused", "true");
   const read = jest.spyOn(Storage.prototype, "getItem");
   const write = jest.spyOn(Storage.prototype, "setItem");
   const f = fixture();
-  const first = render(<App backend={f.backend} />);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Pause landscape animation" }),
-  );
-  expect(
-    screen.getByRole("button", { name: "Resume landscape animation" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  first.unmount();
   render(<App backend={f.backend} />);
   expect(
-    screen.getByRole("button", { name: "Pause landscape animation" }),
-  ).toHaveAttribute("aria-pressed", "false");
+    screen.queryByRole("button", { name: /(?:Pause|Resume) landscape animation/ }),
+  ).not.toBeInTheDocument();
   expect(read).not.toHaveBeenCalled();
   expect(write).not.toHaveBeenCalled();
   read.mockRestore();

@@ -1,4 +1,9 @@
-import { createBridgeGeometry } from "./bridgeGeometry";
+import {
+  bridgeNormal,
+  BridgeVertex,
+  createBridgeGeometry,
+  projectBridgeShadowPolygon,
+} from "./bridgeGeometry";
 import { EYE_HEIGHT, WATER_HORIZON } from "./composition";
 
 test("the circular arch meets both springings and retains a uniform radial ring", () => {
@@ -93,3 +98,67 @@ test("very wide views preserve positive camera depth instead of stretching mason
   expect(left.x).toBeLessThan(right.x);
   expect(bridge.archPoint(0.5).y).toBeCloseTo(1.4);
 });
+
+test("bridge normals preserve the world camera orientation and change which riser faces light", () => {
+  const bridge = createBridgeGeometry(1440, 900);
+  const right = bridgeNormal(bridge, 1, 0, 0);
+  const left = bridgeNormal(bridge, -1, 0, 0);
+  const near = bridgeNormal(bridge, 0, 0, -1);
+  const up = bridgeNormal(bridge, 0, 1, 0);
+  expect(up).toEqual([0, 1, 0]);
+  expect(near[2]).toBeLessThan(0);
+  expect(right[0]).toBeGreaterThan(0);
+  for (const n of [right, left, near, up, bridgeNormal(bridge, 0.6, 1, 0)]) {
+    expect(Math.hypot(...n)).toBeCloseTo(1);
+  }
+  const dot = (normal: readonly number[], light: readonly number[]) =>
+    normal.reduce((sum, component, i) => sum + component * light[i], 0);
+  expect(dot(right, [0.65, 0.4, 1])).toBeGreaterThan(0);
+  expect(dot(left, [0.65, 0.4, 1])).toBeLessThan(0);
+  expect(dot(right, [-0.65, 0.4, 1])).toBeLessThan(0);
+  expect(dot(left, [-0.65, 0.4, 1])).toBeGreaterThan(0);
+});
+
+const shadowWall: BridgeVertex[] = [
+  [-2, 0, 0], [2, 0, 0], [2, 2, 0], [-2, 2, 0],
+];
+
+test("cast shadows travel opposite horizontal moon movement", () => {
+  const g = createBridgeGeometry(1440, 900);
+  const left = projectBridgeShadowPolygon(g, shadowWall, [-0.5, 0.5, 1], 1440, 900);
+  const right = projectBridgeShadowPolygon(g, shadowWall, [0.5, 0.5, 1], 1440, 900);
+  const meanX = (points: { x: number }[]) =>
+    points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  expect(meanX(right)).toBeLessThan(meanX(left));
+  // Direction is a ray: its magnitude cannot change the cast silhouette.
+  const scaled = projectBridgeShadowPolygon(g, shadowWall, [1, 1, 2], 1440, 900);
+  expect(scaled).toEqual(right);
+});
+
+test.each([[1440, 900], [390, 844], [320, 800]])(
+  "near-horizon shadow polygons stay finite and inside %i by %i viewport",
+  (width, height) => {
+    const g = createBridgeGeometry(width, height);
+    for (const elevation of [0.6, 0.03, 0.001, 0.00001]) {
+      for (const x of [-1, 0, 1]) {
+        const points = projectBridgeShadowPolygon(
+          g, shadowWall, [x, elevation, 1], width, height,
+        );
+        expect(points.length).toBeGreaterThanOrEqual(3);
+        for (const point of points) {
+          expect(Number.isFinite(point.x + point.y)).toBe(true);
+          expect(point.x).toBeGreaterThanOrEqual(0);
+          expect(point.x).toBeLessThanOrEqual(width);
+          expect(point.y).toBeGreaterThan(height * (1 - WATER_HORIZON));
+          expect(point.y).toBeLessThanOrEqual(height);
+        }
+      }
+    }
+    // Nothing behind the camera is allowed to mirror back onto the river.
+    const airborne: BridgeVertex[] = [[-1, 2, 0], [1, 2, 0], [1, 3, 0], [-1, 3, 0]];
+    expect(projectBridgeShadowPolygon(g, airborne, [0, 0.001, 1], width, height)).toEqual([]);
+    for (const light of [[0, 0, 1], [0, -0.1, 1], [NaN, 1, 1]]) {
+      expect(projectBridgeShadowPolygon(g, shadowWall, light, width, height)).toEqual([]);
+    }
+  },
+);

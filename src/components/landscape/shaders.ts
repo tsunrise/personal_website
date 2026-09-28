@@ -30,6 +30,23 @@ void main(){
  gl_FragColor=vec4(col,1.);
 }`;
 
+/** A cached mineral-painted sprite, positioned in actual viewport coordinates. */
+export const moonFragment = `
+varying vec2 vUv;
+uniform sampler2D uMap;
+uniform sampler2D uMountainMask;
+uniform vec3 uMoonScreen;
+uniform float uAspect;
+void main(){
+ vec2 relative=(vUv-uMoonScreen.xy)*vec2(uAspect,1.);
+ vec2 sprite=relative/(uMoonScreen.z*6.)+.5;
+ if(any(lessThan(sprite,vec2(0.)))||any(greaterThan(sprite,vec2(1.))))discard;
+ vec4 col=texture2D(uMap,sprite);
+ col.a*=1.-texture2D(uMountainMask,vUv).a;
+ if(col.a<.001)discard;
+ gl_FragColor=col;
+}`;
+
 // A small directional spectrum relative to the night's initial breeze. Once
 // oriented, wavevectors stay fixed; veering changes their relative energy.
 // omega² = (g*k + surfaceTension/density*k³) * tanh(k*depth).
@@ -55,6 +72,7 @@ varying vec2 vUv;
 uniform sampler2D uMap;
 uniform sampler2D uWindMap;
 uniform sampler2D uShadowMap;
+uniform sampler2D uNormalMap;
 uniform vec2 uShadowOffset;
 uniform vec2 uSize;
 uniform float uAspect;
@@ -69,6 +87,11 @@ uniform vec2 uWaveBasis;
 uniform float uWaterEnergy;
 uniform vec2 uCurrentOffset;
 uniform vec3 uMoon;
+uniform vec3 uLightDirection;
+uniform vec3 uDefaultLightDirection;
+uniform float uMoonVisibility;
+uniform float uLightStrength;
+uniform float uTwoSided;
 const float horizon=${WATER_HORIZON};
 const float eyeHeight=${EYE_HEIGHT};
 ${noise}
@@ -141,6 +164,24 @@ void main(){
  }
  vec4 col=texture2D(uMap,uv);
  if(col.a<.003)discard;
+ if(uLightStrength>0.){
+  vec4 encoded=texture2D(uNormalMap,uv);
+  if(encoded.a>.003){
+   vec3 surfaceNormal=normalize(encoded.rgb*2.-1.);
+   float current=dot(surfaceNormal,uLightDirection);
+   float reference=dot(surfaceNormal,uDefaultLightDirection);
+   if(uTwoSided>.5){
+    current=.25+.75*abs(current);
+    reference=.25+.75*abs(reference);
+   }else{
+    current=max(current,0.);
+    reference=max(reference,0.);
+   }
+   float ambient=1.-uLightStrength;
+   col.rgb*=(ambient+uLightStrength*current*uMoonVisibility)/
+     (ambient+uLightStrength*reference);
+  }
+ }
  col.rgb+=(hash(gl_FragCoord.xy)-.5)*.018;
  if(water&&uKind<1.5&&waterFade>0.){
   float shade=texture2D(uShadowMap,uv-uShadowOffset).a;
@@ -152,11 +193,10 @@ void main(){
   col.rgb+=vec3(.38,.48,.50)*dot(slope,vec2(.3,.7))*.32;
   // The bridge blocks light: retain the water's own color and wave detail,
   // darken its diffuse illumination gently, and suppress direct moon glints.
-  col.rgb*=1.-shade*.18;
+  col.rgb*=1.-shade*.18*uMoonVisibility;
   // The half-vector is the facet normal that reflects the visible moon to the
   // camera. A finite lunar disc + unresolved capillary roughness soften it.
-  vec3 moonDirection=normalize(vec3((uMoon.x-.5)*uAspect,uMoon.y-horizon,1.));
-  vec3 halfway=normalize(view+moonDirection);
+  vec3 halfway=normalize(view+uLightDirection);
   vec2 requiredSlope=-halfway.xz/max(halfway.y,.001);
   vec2 error=requiredSlope-slope;
   vec2 along=uWaterWind/max(length(uWaterWind),.001);
@@ -164,7 +204,7 @@ void main(){
   float roughness=.045+.014*sqrt(max(uWaterEnergy,0.))+uMoon.z*.28;
   vec2 spread=vec2(dot(error,along),dot(error,across))/vec2(roughness,roughness*.78);
   float moonGlint=exp(-.5*dot(spread,spread));
-  col.rgb+=vec3(.94,.88,.69)*moonGlint*(.15+fresnel*.42)*waterFade*(1.-shade*.85);
+  col.rgb+=vec3(.94,.88,.69)*moonGlint*(.15+fresnel*.42)*waterFade*(1.-shade*.85)*uMoonVisibility;
  }
  gl_FragColor=col;
 }`;
