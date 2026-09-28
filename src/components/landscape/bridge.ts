@@ -5,7 +5,7 @@ type Point = { x: number; y: number };
 type Vertex = [number, number, number];
 type Random = () => number;
 
-/** A quiet cast shadow on the river, separate from the mirrored stonework. */
+/** A soft light-occlusion mask for shading the river beneath the bridge. */
 export function paintBridgeWaterShadow(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -68,15 +68,14 @@ export function paintBridgeWaterShadow(
   silhouette(barrel);
   mask.globalCompositeOperation = "source-in";
   const wash = mask.createLinearGradient(0, minY, 0, maxY + g.scale * 0.25);
-  wash.addColorStop(0, "rgba(32,62,77,.09)");
-  wash.addColorStop(0.3, "rgba(32,62,77,.12)");
-  wash.addColorStop(1, "rgba(32,62,77,0)");
+  wash.addColorStop(0, "rgba(0,0,0,.65)");
+  wash.addColorStop(0.3, "rgba(0,0,0,.8)");
+  wash.addColorStop(1, "rgba(0,0,0,0)");
   mask.fillStyle = wash;
   mask.fillRect(0, 0, w, h);
-  // Share the reflection's water distortion and depth, with no extra GPU layer.
+  // A broad penumbra keeps the lighting diffuse in the hazy, painted scene.
   ctx.save();
-  ctx.globalCompositeOperation = "destination-over";
-  ctx.filter = `blur(${Math.max(1, g.scale * 0.12)}px)`;
+  ctx.filter = `blur(${Math.max(2, g.scale * 0.4)}px)`;
   ctx.drawImage(canvas, 0, 0);
   ctx.restore();
 }
@@ -87,13 +86,12 @@ export function paintBridge(
   w: number,
   h: number,
   random: Random,
-  reflected = false,
 ) {
   const g = createBridgeGeometry(w, h);
   const L = g.halfLength,
     V = g.halfWidth,
     s = g.scale;
-  const p = (u: number, y: number, v: number) => g.project(u, y, v, reflected);
+  const p = (u: number, y: number, v: number) => g.project(u, y, v);
   const path = (points: Point[], close = true) => {
     ctx.beginPath();
     points.forEach((a, i) => (i ? ctx.lineTo(a.x, a.y) : ctx.moveTo(a.x, a.y)));

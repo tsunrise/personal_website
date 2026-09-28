@@ -35,6 +35,7 @@ function Landscape({ motion }: { motion: boolean }) {
     let geese: ReturnType<typeof createGeese> | undefined;
     const flightSchedule = createFlightSchedule();
     const wind = createWind();
+    const shadowOffset = { value: new THREE.Vector2() };
     // Share uniform objects across layers and resize; never reset the weather.
     const weather = {
       uWind: { value: new THREE.Vector2() },
@@ -43,7 +44,10 @@ function Landscape({ motion }: { motion: boolean }) {
       uReeds: { value: new THREE.Vector2() },
       uWaterWind: { value: new THREE.Vector2() },
       uWaveBasis: {
-        value: new THREE.Vector2(wind.state.waveBasis.x, wind.state.waveBasis.z),
+        value: new THREE.Vector2(
+          wind.state.waveBasis.x,
+          wind.state.waveBasis.z,
+        ),
       },
       uWaterEnergy: { value: wind.state.waterEnergy },
       uCurrentOffset: { value: new THREE.Vector2() },
@@ -81,6 +85,7 @@ function Landscape({ motion }: { motion: boolean }) {
       map?: HTMLCanvasElement,
       kind = 0,
       windMap?: HTMLCanvasElement,
+      shadowMap?: HTMLCanvasElement,
     ) {
       const moon = moonPosition(width, height);
       const uniforms: { [key: string]: THREE.IUniform } = {
@@ -90,6 +95,7 @@ function Landscape({ motion }: { motion: boolean }) {
         uAspect: { value: width / height },
         uKind: { value: kind },
         uSize: { value: new THREE.Vector2(width, height) },
+        uShadowOffset: shadowOffset,
       };
       if (map) {
         const texture = new THREE.CanvasTexture(map);
@@ -102,6 +108,12 @@ function Landscape({ motion }: { motion: boolean }) {
         texture.colorSpace = THREE.NoColorSpace;
         textures.push(texture);
         uniforms.uWindMap = { value: texture };
+      }
+      if (shadowMap) {
+        const texture = new THREE.CanvasTexture(shadowMap);
+        texture.colorSpace = THREE.NoColorSpace;
+        textures.push(texture);
+        uniforms.uShadowMap = { value: texture };
       }
       const material = new THREE.ShaderMaterial({
         vertexShader: vertex,
@@ -169,6 +181,7 @@ function Landscape({ motion }: { motion: boolean }) {
                   ? 4
                   : 0,
           p.windMap,
+          p.shadowMap,
         ),
       );
       plane(mistFragment, 5.5, 3);
@@ -201,6 +214,12 @@ function Landscape({ motion }: { motion: boolean }) {
         point.x = 0;
         point.y = 0;
       }
+      // The water is depth 3, while the bridge is depth 4. Keep its lighting
+      // mask attached to the bridge through parallax and the 1.055 overscan.
+      shadowOffset.value.set(
+        point.x / (width * 1.055),
+        -point.y / (height * 1.055),
+      );
       layers.forEach(({ mesh, depth }) => {
         mesh.position.x = (point.x * depth * 2) / width;
         mesh.position.y = (-point.y * depth * 2) / height;

@@ -19,6 +19,7 @@ export interface Painting {
   depth: number;
   kind: "paint" | "water" | "willow" | "reeds" | "shallows";
   windMap?: HTMLCanvasElement;
+  shadowMap?: HTMLCanvasElement;
   fallback?: HTMLCanvasElement;
 }
 function surface(w: number, h: number) {
@@ -199,6 +200,7 @@ export function paintLandscape(w: number, h: number): Painting[] {
   // Only the static fallback needs painted highlights. WebGL derives all glints
   // from the wave normals, so no bright dashes remain glued to moving water.
   const river = ctx;
+  const riverPainting = paintings[paintings.length - 1];
   const stillRiver = surface(w, h);
   stillRiver.ctx.drawImage(paintings[paintings.length - 1].canvas, 0, 0);
   paintings[paintings.length - 1].fallback = stillRiver.canvas;
@@ -242,35 +244,21 @@ export function paintLandscape(w: number, h: number): Painting[] {
   // Built scenery uses independent seeds so material edits do not regenerate plants.
   // Retain the 9,778 samples consumed by the former bridge and bank artwork.
   for (let i = 0; i < 9778; i++) random();
-  const reflectedBridge = add(4, "shallows");
-  paintBridge(reflectedBridge, w, h, seeded(127), true);
-  reflectedBridge.save();
-  reflectedBridge.globalCompositeOperation = "destination-in";
+  const bridgeShadow = surface(w, h);
+  paintBridgeWaterShadow(bridgeShadow.ctx, w, h);
+  riverPainting.shadowMap = bridgeShadow.canvas;
+  // The live shader reduces water lighting; the static fallback darkens its
+  // existing water colors with the same soft mask. No mirrored bridge image.
+  stillRiver.ctx.save();
+  stillRiver.ctx.globalAlpha = 0.18;
+  stillRiver.ctx.drawImage(bridgeShadow.canvas, 0, 0);
+  stillRiver.ctx.restore();
+  const bankContact = add(4, "shallows");
   const geometry = createBridgeGeometry(w, h);
-  const waterline = geometry.project(0, 0).y;
-  const reflectionFade = reflectedBridge.createLinearGradient(
-    0,
-    waterline,
-    0,
-    waterline + geometry.scale * 2.7,
-  );
-  reflectionFade.addColorStop(0, "rgba(255,255,255,.19)");
-  reflectionFade.addColorStop(0.5, "rgba(255,255,255,.09)");
-  reflectionFade.addColorStop(1, "rgba(255,255,255,0)");
-  reflectedBridge.fillStyle = reflectionFade;
-  reflectedBridge.fillRect(0, 0, w, h);
-  // Broken reflected silhouettes remain legible in the still Canvas fallback too.
-  reflectedBridge.globalCompositeOperation = "destination-out";
-  for (let y = waterline; y < h; y += Math.max(2, h * 0.0036)) {
-    reflectedBridge.fillStyle = `rgba(0,0,0,${0.14 + 0.12 * Math.sin(y * 0.43)})`;
-    reflectedBridge.fillRect(0, y, w, Math.max(0.6, h * 0.0009));
-  }
-  reflectedBridge.restore();
-  paintBridgeWaterShadow(reflectedBridge, w, h);
   ctx = add(4);
   paintBridge(ctx, w, h, seeded(127));
   ctx = add(4);
-  paintBanks(ctx, reflectedBridge, w, h, seeded(289));
+  paintBanks(ctx, bankContact, w, h, seeded(289));
   const bankCanvas = ctx.canvas;
   // Reed beds include submerged stems and reflections beneath their living foliage.
   const shallows = add(3, "shallows");

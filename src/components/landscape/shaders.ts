@@ -54,6 +54,8 @@ export const paintFragment = `
 varying vec2 vUv;
 uniform sampler2D uMap;
 uniform sampler2D uWindMap;
+uniform sampler2D uShadowMap;
+uniform vec2 uShadowOffset;
 uniform vec2 uSize;
 uniform float uAspect;
 uniform float uTime;
@@ -141,12 +143,16 @@ void main(){
  if(col.a<.003)discard;
  col.rgb+=(hash(gl_FragCoord.xy)-.5)*.018;
  if(water&&uKind<1.5&&waterFade>0.){
+  float shade=texture2D(uShadowMap,uv-uShadowOffset).a;
   vec3 normal=normalize(vec3(-slope.x,1.,-slope.y));
   float fresnel=.02+.98*pow(1.-max(dot(normal,view),0.),5.);
   vec3 reflected=reflect(-view,normal);
   vec3 sky=mix(vec3(.66,.75,.77),vec3(.31,.43,.59),clamp(reflected.y*1.5,0.,1.));
   col.rgb=mix(col.rgb,sky,fresnel*.28*waterFade);
   col.rgb+=vec3(.38,.48,.50)*dot(slope,vec2(.3,.7))*.32;
+  // The bridge blocks light: retain the water's own color and wave detail,
+  // darken its diffuse illumination gently, and suppress direct moon glints.
+  col.rgb*=1.-shade*.18;
   // The half-vector is the facet normal that reflects the visible moon to the
   // camera. A finite lunar disc + unresolved capillary roughness soften it.
   vec3 moonDirection=normalize(vec3((uMoon.x-.5)*uAspect,uMoon.y-horizon,1.));
@@ -158,7 +164,7 @@ void main(){
   float roughness=.045+.014*sqrt(max(uWaterEnergy,0.))+uMoon.z*.28;
   vec2 spread=vec2(dot(error,along),dot(error,across))/vec2(roughness,roughness*.78);
   float moonGlint=exp(-.5*dot(spread,spread));
-  col.rgb+=vec3(.94,.88,.69)*moonGlint*(.15+fresnel*.42)*waterFade;
+  col.rgb+=vec3(.94,.88,.69)*moonGlint*(.15+fresnel*.42)*waterFade*(1.-shade*.85);
  }
  gl_FragColor=col;
 }`;

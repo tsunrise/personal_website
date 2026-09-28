@@ -85,6 +85,11 @@ test("motion changes do not rebuild the scene; paused frames stay still and clea
   const masks = foliage.map((material) =>
     jest.spyOn(material.uniforms.uWindMap.value, "dispose"),
   );
+  const water = scene.children
+    .map((child) => (child as THREE.Mesh).material as THREE.ShaderMaterial)
+    .find((material) => material.uniforms?.uKind.value === 1)!;
+  expect(water.uniforms.uShadowMap.value).toBeInstanceOf(THREE.CanvasTexture);
+  const disposeShadow = jest.spyOn(water.uniforms.uShadowMap.value, "dispose");
   rerender(<Landscape motion={false} />);
   act(() => frame(180));
   const stopped = foliage.map((material) => material.uniforms.uTime.value);
@@ -94,6 +99,7 @@ test("motion changes do not rebuild the scene; paused frames stay still and clea
   );
   unmount();
   masks.forEach((dispose) => expect(dispose).toHaveBeenCalledTimes(1));
+  expect(disposeShadow).toHaveBeenCalledTimes(1);
   expect(disconnect).toHaveBeenCalled();
   expect(mockRenderer.dispose).toHaveBeenCalledTimes(1);
   expect(window.cancelAnimationFrame).toHaveBeenCalled();
@@ -183,7 +189,10 @@ test("touch parallax follows a finger on coarse screens without blocking scrolli
   act(() => frame(100));
   const scene = mockRenderer.render.mock.calls[0][0] as THREE.Scene;
   const moon = scene.children.find((child) => child.renderOrder === 1)!;
-  const move = (type: string, touches: { clientX: number; clientY: number }[]) => {
+  const move = (
+    type: string,
+    touches: { clientX: number; clientY: number }[],
+  ) => {
     const event = new Event(type, { cancelable: true });
     Object.defineProperty(event, "touches", { value: touches });
     fireEvent(window, event);
