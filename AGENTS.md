@@ -4,8 +4,8 @@ React 18, TypeScript, and Create React App. See [README.md](README.md) for insta
 
 ## Structure
 
-- `src/App.tsx`: page composition, inline answers, and dialogs.
-- `src/index.css`: typography, responsive layout, moon interaction target, and background dimming for focus, populated prompts, or answers; clearing a focused prompt stays dim.
+- `src/App.tsx`: page composition, inline answers, dialogs, and the bottom-left 月読 toggle. Tsukuyomi mode starts off on every page load and hides page content while preserving the interactive landscape, draft, and answer. There is no skip-to-content link.
+- `src/index.css`: typography, responsive layout, moon interaction target, Tsukuyomi toggle styling, and background dimming for focus, populated prompts, or answers; clearing a focused prompt stays dim. Tsukuyomi mode removes that dimming.
 - `src/components/salieri/Composer.tsx`: editable prompt and Turnstile lifecycle. Focusing the input does not fetch or display candidate questions.
 - `src/components/salieri/service.ts`: remote API, streaming, cancellation, and chat state.
 - `src/components/landscape/`: procedural artwork, draggable moon and shared lighting, Three.js shaders, and shared breeze physics in `wind.ts`; `bridgeGeometry.ts` shares the water camera with the painted bridge in `bridge.ts` and shoreline washes in `banks.ts`. Read [docs/landscape.md](docs/landscape.md) before changing the scene, including water/moon coordinates, mobile proportions, and touch interaction. The moon starts at its default position on each page load; movement is not persisted. The animation clock freezes while the page is hidden; there is no manual pause control.

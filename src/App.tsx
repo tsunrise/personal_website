@@ -16,6 +16,7 @@ export default function App({
 }) {
   const [draft, setDraft] = useState("");
   const [dialog, setDialog] = useState<"wechat" | null>(null);
+  const [tsukuyomi, setTsukuyomi] = useState(false);
   const resetUI = useCallback(() => {
     setDraft("");
   }, []);
@@ -32,7 +33,7 @@ export default function App({
   };
   return (
     <div
-      className={`site ${reading || draft.trim() ? "site--engaged" : ""}`}
+      className={`site ${tsukuyomi ? "site--tsukuyomi" : reading || draft.trim() ? "site--engaged" : ""}`}
     >
       <Suspense
         fallback={
@@ -41,10 +42,19 @@ export default function App({
       >
         <Landscape />
       </Suspense>
-      <a className="skip-link" href="#main">
-        Skip to content
-      </a>
-      <main id="main" className="main">
+      <button
+        className="tsukuyomi-toggle"
+        type="button"
+        aria-label="月読 — Tsukuyomi mode"
+        aria-pressed={tsukuyomi}
+        onClick={() => {
+          setDialog(null);
+          setTsukuyomi((active) => !active);
+        }}
+      >
+        <span lang="ja">月読</span>
+      </button>
+      <main id="main" className="main" hidden={tsukuyomi}>
         <div className="identity">
           <h1>
             {reading ? (
@@ -127,7 +137,7 @@ export default function App({
           )}
         </div>
       </main>
-      <footer className="site-footer">
+      <footer className="site-footer" hidden={tsukuyomi}>
         <div className="footer-links">
           <span>© Conghao Shen</span>
           <span aria-hidden="true">/</span>
