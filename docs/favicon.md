@@ -6,12 +6,12 @@ Source: `src/images/moon-favicon.png`, generated with the built-in ImageGen tool
 
 Active files in `public/`:
 
-- `favicon-moon.ico`: 16, 24, 32, 48, and 64 px.
-- `favicon-moon-16x16.png` and `favicon-moon-32x32.png`: browser-tab PNGs.
-- `apple-touch-icon-moon.png`: 180 px.
-- `android-chrome-moon-192x192.png` and `android-chrome-moon-512x512.png`: web app icons.
+- `favicon.ico`: 16, 24, 32, 48, and 64 px.
+- `favicon-16x16.png` and `favicon-32x32.png`: browser-tab PNGs.
+- `apple-touch-icon.png`: 180 px.
+- `android-chrome-192x192.png` and `android-chrome-512x512.png`: web app icons.
 
-`public/index.html` and `public/manifest.json` reference these filenames. The previous icon files are retained but no longer linked; the new names also avoid reusing cached icons.
+`public/index.html` and `public/manifest.json` reference these filenames. The standard icon filenames contain the moon artwork; superseded bubble-logo assets and duplicate moon-suffixed files have been removed.
 
 ## Generation prompt
 
