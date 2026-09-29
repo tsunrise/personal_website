@@ -1,5 +1,9 @@
 import { EYE_HEIGHT, WATER_HORIZON } from "./composition";
 import { PLANT_DEPTH_RANGE, PLANT_LENGTH_RANGE } from "./plantMotion";
+import { colorGLSL, moonRadianceGLSL } from "./lighting";
+import { OVERSCAN } from "./moon";
+import { cloudGLSL } from "./cloudShaders";
+import { waterLightingGLSL, WATER_EXPOSURE } from "./waterLighting";
 
 export const vertex = `varying vec2 vUv;
 void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
@@ -14,20 +18,29 @@ export const skyFragment = `
 varying vec2 vUv;
 uniform float uAspect;
 uniform vec2 uAirOffset;
+uniform float uIncidentIntensity;
+uniform float uAmbientGain;
 ${noise}
+${colorGLSL}
+${cloudGLSL}
 void main(){
- vec2 uv=vUv;float y=1.-uv.y;
- vec3 col=mix(vec3(.31,.43,.59),vec3(.66,.75,.77),smoothstep(0.,.85,y));
- col=mix(col,vec3(.73,.78,.75),smoothstep(.52,.9,y)*.4);
- // Both scales advect with the same air mass, in aspect-correct sky space.
- vec2 p=vec2(uv.x*uAspect,uv.y)-uAirOffset*vec2(.0015,.0003);
- float clouds=fbm(p*3.8);
- float wisps=fbm(p*vec2(2.4,8.0)+vec2(0.,1.));
- float edge=pow(abs(uv.x-.5)*2.,1.8);
- float cloud=smoothstep(.50,.77,clouds*.55+wisps*.45)*(.22+edge*.5);
- col=mix(col,vec3(.88,.80,.72),cloud*(1.-smoothstep(.5,.85,y)));
+ vec3 col=linearToSrgb(skyBaseColor(vUv));
  col+=(hash(gl_FragCoord.xy)-.5)*.019;
  gl_FragColor=vec4(col,1.);
+}`;
+
+/** Clouds cover the lunar sprite once, before mountains cover both. */
+export const cloudFragment = `
+varying vec2 vUv;
+uniform float uAspect;
+uniform vec2 uAirOffset;
+uniform float uIncidentIntensity;
+uniform float uAmbientGain;
+${colorGLSL}
+${cloudGLSL}
+void main(){
+ vec4 cloud=cloudColor(vUv);
+ gl_FragColor=vec4(linearToSrgb(cloud.rgb),cloud.a);
 }`;
 
 /** A cached mineral-painted sprite, positioned in actual viewport coordinates. */
@@ -37,11 +50,24 @@ uniform sampler2D uMap;
 uniform sampler2D uMountainMask;
 uniform vec3 uMoonScreen;
 uniform float uAspect;
+uniform float uIncidentIntensity;
+uniform float uAmbientGain;
+uniform vec2 uAirOffset;
+uniform vec2 uReferenceMoonSky;
+${colorGLSL}
+${cloudGLSL}
+${moonRadianceGLSL}
 void main(){
  vec2 relative=(vUv-uMoonScreen.xy)*vec2(uAspect,1.);
  vec2 sprite=relative/(uMoonScreen.z*6.)+.5;
  if(any(lessThan(sprite,vec2(0.)))||any(greaterThan(sprite,vec2(1.))))discard;
  vec4 col=texture2D(uMap,sprite);
+ // Transport the moon's contrast above atmospheric airlight. Extinction must
+ // soften it into the local sky, not turn its opaque disc or halo toward black.
+ vec2 skyUv=.5+(vUv-.5)/${OVERSCAN};
+ vec3 sky=skyBaseColor(skyUv);
+ vec3 referenceSky=skyBaseColor(skyUv+uReferenceMoonSky-uMoonSky)/uAmbientGain;
+ col.rgb=linearToSrgb(moonRadiance(srgbToLinear(col.rgb),sky,referenceSky,uIncidentIntensity));
  col.a*=1.-texture2D(uMountainMask,vUv).a;
  if(col.a<.001)discard;
  gl_FragColor=col;
@@ -74,6 +100,7 @@ uniform sampler2D uWindMap;
 uniform sampler2D uShadowMap;
 uniform sampler2D uNormalMap;
 uniform vec2 uShadowOffset;
+uniform vec2 uSkyOffset;
 uniform vec2 uSize;
 uniform float uAspect;
 uniform float uTime;
@@ -90,11 +117,21 @@ uniform vec3 uMoon;
 uniform vec3 uLightDirection;
 uniform vec3 uDefaultLightDirection;
 uniform float uMoonVisibility;
+uniform float uIncidentIntensity;
+uniform float uDirectIntensity;
+uniform float uAmbientGain;
+uniform vec3 uSourceDirection;
+uniform vec3 uSourceTangentX;
+uniform vec3 uSourceTangentY;
+uniform vec3 uSourceCovariance;
 uniform float uLightStrength;
 uniform float uTwoSided;
 const float horizon=${WATER_HORIZON};
 const float eyeHeight=${EYE_HEIGHT};
 ${noise}
+${colorGLSL}
+${cloudGLSL}
+${waterLightingGLSL}
 // Reconstruct a point on the painted plant in camera space, bend it in world
 // X/Z, then divide by its new depth. The same virtual camera views the water.
 vec2 projectPlant(vec2 rest,vec3 mask,vec2 load,bool reed){
@@ -164,6 +201,8 @@ void main(){
  }
  vec4 col=texture2D(uMap,uv);
  if(col.a<.003)discard;
+ col.rgb=srgbToLinear(col.rgb);
+ float gain=uAmbientGain;
  if(uLightStrength>0.){
   vec4 encoded=texture2D(uNormalMap,uv);
   if(encoded.a>.003){
@@ -171,50 +210,46 @@ void main(){
    float current=dot(surfaceNormal,uLightDirection);
    float reference=dot(surfaceNormal,uDefaultLightDirection);
    if(uTwoSided>.5){
-    current=.25+.75*abs(current);
-    reference=.25+.75*abs(reference);
+    current=max(current,0.)+.3*max(-current,0.);
+    reference=max(reference,0.)+.3*max(-reference,0.);
    }else{
     current=max(current,0.);
     reference=max(reference,0.);
    }
    float ambient=1.-uLightStrength;
-   col.rgb*=(ambient+uLightStrength*current*uMoonVisibility)/
+   gain=(ambient*uAmbientGain+uLightStrength*current*uDirectIntensity)/
      (ambient+uLightStrength*reference);
   }
  }
- col.rgb+=(hash(gl_FragCoord.xy)-.5)*.018;
+ col.rgb*=gain;
  if(water&&uKind<1.5&&waterFade>0.){
   float shade=texture2D(uShadowMap,uv-uShadowOffset).a;
   vec3 normal=normalize(vec3(-slope.x,1.,-slope.y));
   float fresnel=.02+.98*pow(1.-max(dot(normal,view),0.),5.);
   vec3 reflected=reflect(-view,normal);
-  vec3 sky=mix(vec3(.66,.75,.77),vec3(.31,.43,.59),clamp(reflected.y*1.5,0.,1.));
+  vec2 skyUv=vec2(.5,horizon)+vec2(reflected.x/uAspect,reflected.y)/max(reflected.z,.05)+uSkyOffset;
+  vec3 sky=skyColor(clamp(skyUv,vec2(-.5,0.),vec2(1.5,1.5)));
   col.rgb=mix(col.rgb,sky,fresnel*.28*waterFade);
-  col.rgb+=vec3(.38,.48,.50)*dot(slope,vec2(.3,.7))*.32;
+  col.rgb+=srgbToLinear(vec3(.38,.48,.50))*dot(slope,vec2(.3,.7))*.32*uAmbientGain;
   // The bridge blocks light: retain the water's own color and wave detail,
   // darken its diffuse illumination gently, and suppress direct moon glints.
-  col.rgb*=1.-shade*.18*uMoonVisibility;
-  // The half-vector is the facet normal that reflects the visible moon to the
-  // camera. A finite lunar disc + unresolved capillary roughness soften it.
-  vec3 halfway=normalize(view+uLightDirection);
-  vec2 requiredSlope=-halfway.xz/max(halfway.y,.001);
-  vec2 error=requiredSlope-slope;
-  vec2 along=uWaterWind/max(length(uWaterWind),.001);
-  vec2 across=vec2(-along.y,along.x);
-  float roughness=.045+.014*sqrt(max(uWaterEnergy,0.))+uMoon.z*.28;
-  vec2 spread=vec2(dot(error,along),dot(error,across))/vec2(roughness,roughness*.78);
-  float moonGlint=exp(-.5*dot(spread,spread));
-  col.rgb+=vec3(.94,.88,.69)*moonGlint*(.15+fresnel*.42)*waterFade*(1.-shade*.85)*uMoonVisibility;
+  float moonGlint=moonSpecular(view,normal,uSourceDirection,uSourceTangentX,
+    uSourceTangentY,uSourceCovariance,uWaterWind,uWaterEnergy);
+  col.rgb+=srgbToLinear(vec3(.94,.88,.69))*moonGlint*${WATER_EXPOSURE}*waterFade*(1.-shade)*uDirectIntensity;
  }
+ col.rgb=linearToSrgb(max(col.rgb,vec3(0.)));
+ col.rgb+=(hash(gl_FragCoord.xy)-.5)*.018;
  gl_FragColor=col;
 }`;
 
 export const mistFragment = `
 varying vec2 vUv;uniform float uAspect;uniform vec2 uAirOffset;
+uniform float uAmbientGain;
 ${noise}
+${colorGLSL}
 void main(){
  vec2 p=vec2(vUv.x*uAspect,vUv.y)-uAirOffset*vec2(.001,.00008);
  float fog=fbm(p*vec2(2.,18.));
  float band=exp(-pow((vUv.y-.34)*15.,2.));
- gl_FragColor=vec4(.73,.80,.79,band*smoothstep(.2,.8,fog)*.16);
+ gl_FragColor=vec4(linearToSrgb(srgbToLinear(vec3(.73,.80,.79))*uAmbientGain),band*smoothstep(.2,.8,fog)*.16);
 }`;

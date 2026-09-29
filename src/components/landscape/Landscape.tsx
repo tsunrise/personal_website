@@ -5,12 +5,14 @@ import { paintBridgeWaterShadow } from "./bridge";
 import { createGeese, createFlightSchedule } from "./geese";
 import { createWind } from "./wind";
 import { moonPosition } from "./composition";
+import { cloudTransmission, getCloudAtlas } from "./clouds";
+import { LightingState, sampleLighting } from "./lighting";
 import {
   canResetMoon, clampMoon, interpolateMoon, Moon, moonLight, MOON_DEPTH,
   mountainCoverage, OVERSCAN, paintMountainMask, Point, RESET_SECONDS,
   Ridge, screenMoon, screenToScene,
 } from "./moon";
-import { vertex, skyFragment, paintFragment, moonFragment, mistFragment } from "./shaders";
+import { vertex, skyFragment, cloudFragment, paintFragment, moonFragment, mistFragment } from "./shaders";
 
 const FRAME_INTERVAL = 1000 / 60;
 
@@ -46,12 +48,24 @@ function Landscape() {
     const flightSchedule = createFlightSchedule();
     const wind = createWind();
     const shadowOffset = { value: new THREE.Vector2() };
+    const skyOffset = { value: new THREE.Vector2() };
+    const cloudMap: { value: THREE.DataTexture | null } = { value: null };
+    let illumination: LightingState;
     const light = {
       uMoon: { value: new THREE.Vector3() },
       uMoonScreen: { value: new THREE.Vector3() },
       uLightDirection: { value: new THREE.Vector3() },
       uDefaultLightDirection: { value: new THREE.Vector3() },
       uMoonVisibility: { value: 1 },
+      uMoonSky: { value: new THREE.Vector2() },
+      uReferenceMoonSky: { value: new THREE.Vector2() },
+      uIncidentIntensity: { value: 1 },
+      uDirectIntensity: { value: 1 },
+      uAmbientGain: { value: 1 },
+      uSourceDirection: { value: new THREE.Vector3() },
+      uSourceTangentX: { value: new THREE.Vector3() },
+      uSourceTangentY: { value: new THREE.Vector3() },
+      uSourceCovariance: { value: new THREE.Vector3() },
     };
     // Shared objects survive scene rebuilds, keeping weather and lighting coherent.
     const weather = {
@@ -85,6 +99,7 @@ function Landscape() {
       textures.splice(0).forEach((t) => t.dispose());
       layers.length = 0;
       maskTexture = shadowTexture = undefined;
+      cloudMap.value = null;
     }
     function texture(canvas: HTMLCanvasElement) {
       const map = new THREE.CanvasTexture(canvas);
@@ -101,6 +116,8 @@ function Landscape() {
         uTime: { value: elapsed }, uAspect: { value: width / height },
         uKind: { value: kind }, uSize: { value: new THREE.Vector2(width, height) },
         uShadowOffset: shadowOffset,
+        uSkyOffset: skyOffset,
+        uCloudMap: cloudMap,
         uMountainMask: { value: maskTexture },
         uLightStrength: { value: painting?.lightStrength ?? 0 },
         uTwoSided: { value: painting?.twoSided ? 1 : 0 },
@@ -138,7 +155,6 @@ function Landscape() {
       light.uMoonScreen.value.set(visible.x / width, 1 - visible.y / height, visible.radius / height);
       light.uLightDirection.value.fromArray(currentLight.direction);
       light.uDefaultLightDirection.value.fromArray(reference.direction);
-      light.uMoonVisibility.value = 1 - coverage;
       button!.style.left = `${visible.x}px`;
       button!.style.top = `${visible.y}px`;
       button!.style.width = button!.style.height = `${visible.radius * 2}px`;
@@ -163,6 +179,26 @@ function Landscape() {
         previousShadow = shadowKey;
       }
     }
+    // Weather can cover a stationary moon: energy must not share the geometry cache.
+    function updateIllumination() {
+      const air = { x: wind.state.displacement.x, y: wind.state.displacement.z };
+      illumination = sampleLighting(moon, ridges, width, height, point,
+        (uv) => cloudTransmission(uv, width / height, air));
+      const visible = screenMoon(moon, width, height, point);
+      const skyMoon = screenToScene(visible, 0, width, height);
+      light.uMoonSky.value.set(skyMoon.x, skyMoon.y);
+      const referenceSky = screenToScene(screenMoon(moonPosition(width, height), width, height, point), 0, width, height);
+      light.uReferenceMoonSky.value.set(referenceSky.x, referenceSky.y);
+      light.uMoonVisibility.value = illumination.transmission;
+      light.uIncidentIntensity.value = illumination.incidentIntensity;
+      light.uDirectIntensity.value = illumination.directIntensity;
+      light.uAmbientGain.value = illumination.ambientGain;
+      light.uSourceDirection.value.fromArray(illumination.sourceDirection);
+      light.uSourceTangentX.value.fromArray(illumination.tangentX);
+      light.uSourceTangentY.value.fromArray(illumination.tangentY);
+      light.uSourceCovariance.value.fromArray(illumination.covariance);
+      skyOffset.value.set(point.x * 3 / (width * OVERSCAN), -point.y * 3 / (height * OVERSCAN));
+    }
     function composeFallback() {
       if (!fallbackCanvas) return;
       const visible = screenMoon(moon, width, height, point);
@@ -170,7 +206,11 @@ function Landscape() {
         moon: { x: visible.x / width, y: 1 - visible.y / height, radius: visible.radius / height },
         direction: light.uLightDirection.value.toArray(),
         referenceDirection: light.uDefaultLightDirection.value.toArray(),
-        visibility: 1 - coverage, mountainMask, parallax: point,
+        illumination, mountainMask, parallax: point,
+        air: { x: wind.state.displacement.x, y: wind.state.displacement.z },
+        moonSky: { x: light.uMoonSky.value.x, y: light.uMoonSky.value.y },
+        referenceMoonSky: { x: light.uReferenceMoonSky.value.x, y: light.uReferenceMoonSky.value.y },
+        waterWind: [wind.state.water.x, wind.state.water.z], waterEnergy: wind.state.waterEnergy,
       });
     }
     function showFallback() {
@@ -185,6 +225,7 @@ function Landscape() {
       fallbackCanvas.width = width;
       fallbackCanvas.height = height;
       updateMoon(true);
+      updateIllumination();
       composeFallback();
       if (renderer) renderer.domElement.style.display = "none";
       container!.dataset.renderer = "canvas2d";
@@ -219,11 +260,22 @@ function Landscape() {
       renderer!.setSize(width, height, false);
       renderer!.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       maskTexture = texture(mountainMask);
+      const atlas = getCloudAtlas();
+      cloudMap.value = new THREE.DataTexture(atlas.data, atlas.size, atlas.size, THREE.RGBAFormat);
+      cloudMap.value.colorSpace = THREE.NoColorSpace;
+      cloudMap.value.wrapS = cloudMap.value.wrapT = THREE.RepeatWrapping;
+      cloudMap.value.minFilter = cloudMap.value.magFilter = THREE.LinearFilter;
+      cloudMap.value.generateMipmaps = false;
+      cloudMap.value.flipY = false;
+      cloudMap.value.needsUpdate = true;
+      textures.push(cloudMap.value);
       plane(skyFragment, 0, 0);
+      plane(cloudFragment, 1.25, 0);
       geese = createGeese(scene, flightSchedule);
       paintings.forEach((p, i) => plane(p.kind === "moon" ? moonFragment : paintFragment, i + 1, p.depth, p));
       plane(mistFragment, 5.5, 3);
       updateMoon(true);
+      updateIllumination();
     }
     function render(now: number) {
       if (disposed) return;
@@ -243,7 +295,7 @@ function Landscape() {
         dirty = true;
       }
       if (fallback) {
-        if (dirty) { updateMoon(); composeFallback(); dirty = false; }
+        if (dirty) { updateMoon(); updateIllumination(); composeFallback(); dirty = false; }
         return;
       }
       wind.advance(dt);
@@ -263,6 +315,7 @@ function Landscape() {
         mesh.position.y = -point.y * depth * 2 / height;
       });
       updateMoon();
+      updateIllumination();
       materials.forEach((m) => { m.uniforms.uTime.value = elapsed; });
       geese?.update(elapsed, width, height);
       renderer!.render(scene, camera);

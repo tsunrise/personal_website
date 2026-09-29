@@ -60,7 +60,8 @@ export function moonLight(moon: Moon, width: number, height: number, parallax = 
   };
 }
 
-function ridgeHeight(x: number, ridge: Ridge, width: number, height: number, parallax: Point) {
+/** Screen-space top of a painted mountain; no silhouette outside its polyline. */
+export function ridgeHeight(x: number, ridge: Ridge, width: number, height: number, parallax: Point) {
   const uv = screenToScene({ x, y: 0 }, ridge.depth, width, height, parallax);
   const points = ridge.points;
   if (points.length < 2 || uv.x < points[0].x || uv.x > points[points.length - 1].x) return Infinity;

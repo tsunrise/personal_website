@@ -3,6 +3,9 @@ import * as THREE from "three";
 import Landscape from "./Landscape";
 import { moonPosition } from "./composition";
 import { screenMoon } from "./moon";
+import * as clouds from "./clouds";
+import * as painting from "./painting";
+import { cloudFragment, moonFragment } from "./shaders";
 
 let mockFailRenderer = false;
 let mockRenderer: any;
@@ -120,6 +123,7 @@ test("frames are throttled, rerenders retain the scene, and cleanup releases tex
     if (value instanceof THREE.Texture) textures.add(value);
   }));
   expect(textures.size).toBeGreaterThan(15);
+  expect(Array.from(textures).filter((texture) => texture instanceof THREE.DataTexture)).toHaveLength(1);
   const disposals = Array.from(textures).map((texture) => jest.spyOn(texture, "dispose"));
   const button = getByRole("button", { name: "Move moon" });
   pointer(button, "pointerdown", { clientX: position(button).x, clientY: position(button).y });
@@ -141,6 +145,8 @@ test.each([60, 120, 144])("targets 60 fps on a %i Hz display without changing an
 });
 
 test("shared weather and lighting survive hidden tabs and resize without catching up", () => {
+  jest.spyOn(clouds, "cloudTransmission").mockImplementation((_uv, _aspect, air) =>
+    Math.exp(-2 * Math.hypot(air.x, air.y)));
   fakeResizeTimers();
   const { unmount } = render(<Landscape />);
   tick(); tick();
@@ -148,20 +154,32 @@ test("shared weather and lighting survive hidden tabs and resize without catchin
   const snapshot = () => {
     const u = materials()[0].uniforms;
     return [u.uTime.value, u.uWaterEnergy.value, ...u.uAirOffset.value.toArray(),
-      ...u.uWillow.value.toArray(), ...u.uReeds.value.toArray(), ...u.uWaveBasis.value.toArray()];
+      ...u.uWillow.value.toArray(), ...u.uReeds.value.toArray(), ...u.uWaveBasis.value.toArray(),
+      u.uDirectIntensity.value, u.uAmbientGain.value, u.uIncidentIntensity.value,
+      ...u.uSourceDirection.value.toArray(), ...u.uSourceCovariance.value.toArray()];
   };
+  const shared = ["uAirOffset", "uWaveBasis", "uMoon", "uLightDirection", "uMoonVisibility",
+    "uDirectIntensity", "uIncidentIntensity", "uAmbientGain", "uSourceDirection",
+    "uSourceTangentX", "uSourceTangentY", "uSourceCovariance", "uCloudMap"];
   materials().forEach((material) => {
-    ["uAirOffset", "uWaveBasis", "uMoon", "uLightDirection", "uMoonVisibility"].forEach((key) =>
-      expect(material.uniforms[key]).toBe(uniforms[key]));
+    shared.forEach((key) => expect(material.uniforms[key]).toBe(uniforms[key]));
   });
+  const oldAtlas = uniforms.uCloudMap.value as THREE.DataTexture;
+  const disposeAtlas = jest.spyOn(oldAtlas, "dispose");
   const stopped = snapshot(), renders = mockRenderer.render.mock.calls.length;
   const hidden = jest.spyOn(document, "hidden", "get").mockReturnValue(true);
   fireEvent(document, new Event("visibilitychange"));
   tick(20000); resize(); tick();
   expect(snapshot()).toEqual(stopped);
   expect(mockRenderer.render).toHaveBeenCalledTimes(renders);
-  expect(materials()[0].uniforms.uAirOffset).toBe(uniforms.uAirOffset);
-  expect(materials()[0].uniforms.uLightDirection).toBe(uniforms.uLightDirection);
+  materials().forEach((material) => {
+    shared.forEach((key) => expect(material.uniforms[key]).toBe(uniforms[key]));
+  });
+  expect(disposeAtlas).toHaveBeenCalledTimes(1);
+  const newAtlas = materials()[0].uniforms.uCloudMap.value as THREE.DataTexture;
+  expect(newAtlas).not.toBe(oldAtlas);
+  expect(newAtlas.image.data).toBe(oldAtlas.image.data);
+  const disposeNewAtlas = jest.spyOn(newAtlas, "dispose");
   hidden.mockReturnValue(false);
   fireEvent(document, new Event("visibilitychange"));
   tick(20000);
@@ -170,6 +188,50 @@ test("shared weather and lighting survive hidden tabs and resize without catchin
   expect(snapshot()[0] - stopped[0]).toBeCloseTo(0.05);
   expect(snapshot().slice(2, 4)).not.toEqual(stopped.slice(2, 4));
   unmount();
+  expect(disposeAtlas).toHaveBeenCalledTimes(1);
+  expect(disposeNewAtlas).toHaveBeenCalledTimes(1);
+});
+
+test("advecting clouds dim every receiver while the moon stays stationary", () => {
+  const transmission = jest.spyOn(clouds, "cloudTransmission").mockImplementation((_uv, _aspect, air) =>
+    Math.exp(-8 * Math.hypot(air.x, air.y)));
+  const { getByRole } = render(<Landscape />);
+  const button = getByRole("button", { name: "Move moon" });
+  tick();
+  const start = position(button), uniforms = materials()[0].uniforms;
+  const direct = uniforms.uDirectIntensity.value, ambient = uniforms.uAmbientGain.value;
+  const incident = uniforms.uIncidentIntensity.value;
+  const calls = transmission.mock.calls.length;
+  tick();
+  expect(position(button)).toEqual(start);
+  expect(transmission.mock.calls.length).toBeGreaterThan(calls);
+  expect(uniforms.uDirectIntensity.value).toBeLessThan(direct);
+  expect(uniforms.uAmbientGain.value).toBeLessThan(ambient);
+  expect(uniforms.uAmbientGain.value).toBeGreaterThanOrEqual(0.88);
+  expect(uniforms.uIncidentIntensity.value).toBe(incident);
+  materials().forEach(({ uniforms: receiver }) => {
+    expect(receiver.uDirectIntensity).toBe(uniforms.uDirectIntensity);
+    expect(receiver.uAmbientGain).toBe(uniforms.uAmbientGain);
+    expect(receiver.uSourceDirection).toBe(uniforms.uSourceDirection);
+  });
+});
+
+test("the single cloud layer covers the moon before the mountain silhouettes", () => {
+  render(<Landscape />);
+  const scene = mockRenderer.compile.mock.calls[0][0] as THREE.Scene;
+  const byShader = (fragment: string) => scene.children.filter((child) =>
+    ((child as THREE.Mesh).material as THREE.ShaderMaterial)?.fragmentShader === fragment);
+  const clouds = byShader(cloudFragment), moons = byShader(moonFragment);
+  expect(clouds).toHaveLength(1);
+  expect(moons).toHaveLength(1);
+  expect(moons[0].renderOrder).toBe(1);
+  expect(clouds[0].renderOrder).toBe(1.25);
+  expect(scene.children.some((child) => child.renderOrder === 2)).toBe(true);
+  const texture = ((clouds[0] as THREE.Mesh).material as THREE.ShaderMaterial).uniforms.uCloudMap.value;
+  expect(texture).toBeInstanceOf(THREE.DataTexture);
+  expect(texture.colorSpace).toBe(THREE.NoColorSpace);
+  expect(texture.minFilter).toBe(THREE.LinearFilter);
+  expect(texture.wrapS).toBe(THREE.RepeatWrapping);
 });
 
 test.each(["mouse", "touch"])("%s dragging retains grab offset and respects pointer capture and the 6px threshold", (pointerType) => {
@@ -234,6 +296,8 @@ test.each(["pointercancel", "multitouch", "second touch pointer", "blur"])("%s e
 });
 
 test("only hidden moon clicks reset; the drag-ending click is suppressed and return is smooth", () => {
+  // This interaction test isolates mountain coverage from moving cloud transmission.
+  jest.spyOn(clouds, "cloudTransmission").mockReturnValue(1);
   const { getByRole } = render(<Landscape />);
   const button = getByRole("button", { name: "Move moon" });
   tick();
@@ -329,6 +393,35 @@ test.each(["initialization failure", "context loss"])("%s preserves moon interac
   expect(position(button).x).toBeCloseTo(expected.x);
   expect(position(button).y).toBeCloseTo(expected.y);
   unmount();
+});
+
+test("context-loss fallback receives the same shared lighting and updates it after a drag", () => {
+  jest.spyOn(clouds, "cloudTransmission").mockReturnValue(0.4);
+  const fallback = jest.spyOn(painting, "drawFallback");
+  const { getByRole } = render(<Landscape />);
+  tick(); tick();
+  const button = getByRole("button", { name: "Move moon" });
+  const uniforms = materials()[0].uniforms;
+  const before = {
+    direct: uniforms.uDirectIntensity.value, ambient: uniforms.uAmbientGain.value,
+    incident: uniforms.uIncidentIntensity.value,
+    source: uniforms.uSourceDirection.value.toArray(),
+    covariance: uniforms.uSourceCovariance.value.toArray(),
+    air: uniforms.uAirOffset.value.toArray(),
+  };
+  fireEvent(mockRenderer.domElement, new Event("webglcontextlost", { cancelable: true }));
+  const options = () => fallback.mock.calls[fallback.mock.calls.length - 1][2]!;
+  expect(options().illumination.directIntensity).toBeCloseTo(before.direct);
+  expect(options().illumination.ambientGain).toBeCloseTo(before.ambient);
+  expect(options().illumination.incidentIntensity).toBeCloseTo(before.incident);
+  expect(options().illumination.sourceDirection).toEqual(before.source);
+  expect(options().illumination.covariance).toEqual(before.covariance);
+  expect(options().air).toEqual({ x: before.air[0], y: before.air[1] });
+  expect(options().mountainMask).toBeInstanceOf(HTMLCanvasElement);
+  dragTo(button, 80, 365);
+  expect(options().illumination.directIntensity).toBeLessThan(before.direct * 0.1);
+  expect(options().illumination.ambientGain).toBeGreaterThanOrEqual(0.88);
+  expect(options().illumination.sourceDirection).not.toEqual(before.source);
 });
 
 test("new mounts restore the default moon without persisting moved coordinates", () => {

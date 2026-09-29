@@ -3,7 +3,9 @@ import { plantMaskColor, reedDepth } from "./plantMotion";
 import { paintBridge, paintBridgeWaterShadow } from "./bridge";
 import { paintBanks } from "./banks";
 import { createBridgeGeometry } from "./bridgeGeometry";
-import { lightResponse, lightingGain, normalColor } from "./lighting";
+import { lightResponse, lightingGain, normalColor, LightingState, sampleLighting, srgbToLinear, linearToSrgb, moonRadiance } from "./lighting";
+import { cloudOpticalDepth, cloudTransmission, sampleCloudColor, sampleSkyBaseColor, sampleSkyColor } from "./clouds";
+import { waterSpecular, WATER_EXPOSURE } from "./waterLighting";
 import { OVERSCAN } from "./moon";
 
 // All landscape textures are drawn locally from seeded geometry. No image assets.
@@ -719,7 +721,12 @@ export interface FallbackOptions {
   moon: { x: number; y: number; radius: number };
   direction: readonly number[];
   referenceDirection: readonly number[];
-  visibility: number;
+  illumination: LightingState;
+  air: { x: number; y: number };
+  moonSky: { x: number; y: number };
+  referenceMoonSky: { x: number; y: number };
+  waterWind: readonly number[];
+  waterEnergy: number;
   mountainMask: HTMLCanvasElement;
   /** Small displacement in CSS pixels, matching the scene's parallax clock. */
   parallax: { x: number; y: number };
@@ -730,6 +737,8 @@ type RelightCache = {
   ctx: CanvasRenderingContext2D;
   image: ImageData;
   colors: Uint8ClampedArray;
+  /** Exact linear value of each possible 8-bit source channel, shared by pixels. */
+  linearChannel: Float64Array;
   normals: Float32Array;
   normalAlpha: Uint8Array;
   correction: ReturnType<typeof surface>;
@@ -742,13 +751,60 @@ const fallbackWater = new WeakMap<Painting, {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   glints: ReturnType<typeof surface>;
+  environment: ReturnType<typeof surface>;
 }>();
 const fallbackMoon = new WeakMap<HTMLCanvasElement, ReturnType<typeof surface>>();
+const fallbackMoonRadiance = new WeakMap<Painting, {
+  surface: ReturnType<typeof surface>;
+  image: ImageData;
+  colors: Uint8ClampedArray;
+  linearChannel: Float64Array;
+  key: string;
+} | null>();
+
+/** The compact sprite needs atmospheric airlight, not a diffuse gain. */
+function moonFallback(p: Painting, options: FallbackOptions) {
+  let cache = fallbackMoonRadiance.get(p);
+  if (cache === undefined) {
+    try {
+      const working = surface(p.canvas.width, p.canvas.height);
+      working.ctx.drawImage(p.canvas, 0, 0);
+      const image = working.ctx.getImageData(0, 0, p.canvas.width, p.canvas.height);
+      if (!image?.data) throw new Error("Pixel data unavailable");
+      cache = { surface: working, image, colors: new Uint8ClampedArray(image.data),
+        linearChannel: Float64Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255)), key: "" };
+    } catch {
+      cache = null;
+    }
+    fallbackMoonRadiance.set(p, cache);
+  }
+  if (!cache) return p.canvas;
+  const { incidentIntensity, ambientGain } = options.illumination;
+  const key = `${options.moonSky.y},${options.referenceMoonSky.y},${options.moon.radius},${incidentIntensity},${ambientGain}`;
+  if (cache.key === key) return cache.surface.canvas;
+  const { width, height } = cache.image;
+  for (let y = 0; y < height; y++) {
+    const offset = (0.5 - (y + 0.5) / height) * options.moon.radius * 6 / OVERSCAN;
+    const sky = sampleSkyBaseColor({ x: 0, y: options.moonSky.y + offset }, ambientGain);
+    const reference = sampleSkyBaseColor({ x: 0, y: options.referenceMoonSky.y + offset }, 1);
+    for (let x = 0; x < width; x++) {
+      const pixel = (y * width + x) * 4;
+      if (!cache.colors[pixel + 3]) continue;
+      for (let c = 0; c < 3; c++) {
+        cache.image.data[pixel + c] = linearToSrgb(moonRadiance(
+          cache.linearChannel[cache.colors[pixel + c]], sky[c], reference[c], incidentIntensity,
+        )) * 255;
+      }
+    }
+  }
+  cache.surface.ctx.putImageData(cache.image, 0, 0);
+  cache.key = key;
+  return cache.surface.canvas;
+}
 
 /** Cache a modest CPU working image once; dragging never reads full-size textures. */
 function relitFallback(p: Painting, options: Pick<FallbackOptions,
-  "direction" | "referenceDirection" | "visibility">) {
-  if (!p.normalMap || !p.lightStrength) return p.fallback ?? p.canvas;
+  "direction" | "referenceDirection" | "illumination">) {
   let cache = fallbackRelighting.get(p);
   if (cache === undefined) {
     try {
@@ -759,11 +815,15 @@ function relitFallback(p: Painting, options: Pick<FallbackOptions,
       correction.ctx.drawImage(p.fallback ?? p.canvas, 0, 0, w, h);
       const source = correction.ctx.getImageData(0, 0, w, h);
       const metadata = surface(w, h);
-      metadata.ctx.drawImage(p.normalMap, 0, 0, w, h);
+      if (p.normalMap) metadata.ctx.drawImage(p.normalMap, 0, 0, w, h);
       const packed = metadata.ctx.getImageData(0, 0, w, h);
       if (!source?.data || !packed?.data) throw new Error("Pixel data unavailable");
       const normals = new Float32Array(w * h * 3);
       const normalAlpha = new Uint8Array(w * h);
+      const linearChannel = new Float64Array(256);
+      for (let value = 0; value < linearChannel.length; value++) {
+        linearChannel[value] = srgbToLinear(value / 255);
+      }
       for (let i = 0; i < w * h; i++) {
         const x = packed.data[i * 4] / 127.5 - 1;
         const y = packed.data[i * 4 + 1] / 127.5 - 1;
@@ -777,7 +837,7 @@ function relitFallback(p: Painting, options: Pick<FallbackOptions,
       cache = {
         ...surface(p.canvas.width, p.canvas.height),
         correction, image: source, colors: new Uint8ClampedArray(source.data),
-        normals, normalAlpha, reference: new Float32Array(w * h),
+        linearChannel, normals, normalAlpha, reference: new Float32Array(w * h),
         referenceKey: "", key: "",
       };
       cache.image.data.fill(0);
@@ -789,42 +849,39 @@ function relitFallback(p: Painting, options: Pick<FallbackOptions,
   }
   if (!cache) return p.fallback ?? p.canvas;
   const referenceKey = options.referenceDirection.join(",");
-  const key = `${options.direction.join(",")}:${options.visibility}:${referenceKey}`;
+  const { directIntensity, ambientGain } = options.illumination;
+  const key = `${options.direction.join(",")}:${directIntensity}:${ambientGain}:${referenceKey}`;
   if (cache.key === key) return cache.canvas;
-  const strength = p.lightStrength;
+  const strength = p.lightStrength ?? 0;
   const direction = options.direction, reference = options.referenceDirection;
   for (let i = 0; i < cache.reference.length; i++) {
     const pixel = i * 4, n = i * 3;
-    if (!cache.colors[pixel + 3] || !cache.normalAlpha[i]) continue;
+    if (!cache.colors[pixel + 3]) continue;
     const x = cache.normals[n], y = cache.normals[n + 1], z = cache.normals[n + 2];
     if (cache.referenceKey !== referenceKey) {
       cache.reference[i] = lightResponse(x, y, z, reference, p.twoSided);
     }
     const response = lightResponse(x, y, z, direction, p.twoSided);
-    const gain = lightingGain(response, cache.reference[i], options.visibility, strength);
+    const gain = cache.normalAlpha[i]
+      ? lightingGain(response, cache.reference[i], directIntensity, strength, ambientGain) : ambientGain;
     // A low-resolution light correction sits atop the original full-resolution
     // paint. Darkening preserves every brush mark, and brighter planes retain
     // their high-frequency detail instead of replacing it with a small bitmap.
-    if (gain <= 1) {
-      cache.image.data[pixel] = 0;
-      cache.image.data[pixel + 1] = 0;
-      cache.image.data[pixel + 2] = 0;
-      cache.image.data[pixel + 3] = (1 - gain) * 255;
-    } else {
-      let opacity = 0;
-      for (let channel = 0; channel < 3; channel++) {
-        const base = cache.colors[pixel + channel] / 255;
-        const lit = Math.min(1, base * gain);
-        opacity = Math.max(opacity, (lit - base) / Math.max(1 - base, 0.0001));
-      }
-      for (let channel = 0; channel < 3; channel++) {
-        const base = cache.colors[pixel + channel] / 255;
-        const lit = Math.min(1, base * gain);
-        cache.image.data[pixel + channel] =
-          (base + (lit - base) / Math.max(opacity, 0.0001)) * 255;
-      }
-      cache.image.data[pixel + 3] = opacity * 255;
-    }
+    const red = cache.colors[pixel], green = cache.colors[pixel + 1], blue = cache.colors[pixel + 2];
+    const baseR = red / 255, baseG = green / 255, baseB = blue / 255;
+    const litR = Math.min(1, linearToSrgb(cache.linearChannel[red] * gain));
+    const litG = Math.min(1, linearToSrgb(cache.linearChannel[green] * gain));
+    const litB = Math.min(1, linearToSrgb(cache.linearChannel[blue] * gain));
+    const opacity = gain <= 1
+      ? Math.max(0, (baseR - litR) / Math.max(baseR, 0.0001),
+        (baseG - litG) / Math.max(baseG, 0.0001), (baseB - litB) / Math.max(baseB, 0.0001))
+      : Math.max(0, (litR - baseR) / Math.max(1 - baseR, 0.0001),
+        (litG - baseG) / Math.max(1 - baseG, 0.0001), (litB - baseB) / Math.max(1 - baseB, 0.0001));
+    const denominator = Math.max(opacity, 0.0001);
+    cache.image.data[pixel] = (baseR + (litR - baseR) / denominator) * 255;
+    cache.image.data[pixel + 1] = (baseG + (litG - baseG) / denominator) * 255;
+    cache.image.data[pixel + 2] = (baseB + (litB - baseB) / denominator) * 255;
+    cache.image.data[pixel + 3] = opacity * 255;
   }
   cache.referenceKey = referenceKey;
   cache.key = key;
@@ -840,19 +897,44 @@ function relitFallback(p: Painting, options: Pick<FallbackOptions,
 
 function reflectedFallback(
   p: Painting,
-  direction: readonly number[],
-  visibility: number,
+  options: FallbackOptions,
   shadowOffset: { x: number; y: number },
 ) {
   const w = p.canvas.width, h = p.canvas.height;
   let working = fallbackWater.get(p);
   if (!working) {
-    working = { ...surface(w, h), glints: surface(w, h) };
+    working = { ...surface(w, h), glints: surface(w, h), environment: surface(180, Math.max(1, Math.round(180 * h / w))) };
     fallbackWater.set(p, working);
   }
-  const { ctx, glints } = working;
+  const { ctx, glints, environment } = working;
+  const { illumination: light, air, moonSky, waterWind, waterEnergy } = options;
+  const source = { direction: light.sourceDirection, tangentX: light.tangentX,
+    tangentY: light.tangentY, covariance: light.covariance };
   ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(p.fallback ?? p.canvas, 0, 0);
+  ctx.drawImage(relitFallback(p, options), 0, 0);
+  // Static flat-water limit of the reflected environment; retain the painted ripples.
+  const ew = environment.canvas.width, eh = environment.canvas.height;
+  const image = environment.ctx.createImageData(ew, eh);
+  for (let py = 0; py < eh; py++) {
+    const y = 1 - (py + 0.5) / eh, below = WATER_HORIZON - y;
+    if (below <= 0) continue;
+    for (let px = 0; px < ew; px++) {
+      const x = (px + 0.5) / ew;
+      const vx = -(x - 0.5) * w / h, length = Math.hypot(vx, below, 1);
+      const fresnel = 0.02 + 0.98 * (1 - below / length) ** 5;
+      const sky = sampleSkyColor({ x: x + 3 * shadowOffset.x / w,
+        y: WATER_HORIZON + below - 3 * shadowOffset.y / h },
+      w / h, air, moonSky, light.incidentIntensity, light.ambientGain);
+      const pixel = (py * ew + px) * 4;
+      for (let c = 0; c < 3; c++) image.data[pixel + c] = linearToSrgb(sky[c]) * 255;
+      image.data[pixel + 3] = fresnel * 0.28 * Math.min(1, below / 0.065) * 255;
+    }
+  }
+  environment.ctx.putImageData(image, 0, 0);
+  ctx.save();
+  ctx.globalCompositeOperation = "source-atop";
+  ctx.drawImage(environment.canvas, 0, 0, w, h);
+  ctx.restore();
   // The flat-water limit of the shader's half-vector model. Moving the moon
   // vertically changes the glint's depth instead of leaving a fixed bright strip.
   glints.ctx.clearRect(0, 0, w, h);
@@ -863,13 +945,10 @@ function reflectedFallback(
     const grain = random();
     const vx = -(x - 0.5) * w / h, vy = WATER_HORIZON - y;
     const distance = Math.hypot(vx, vy, 1);
-    const hx = vx / distance + direction[0];
-    const hy = vy / distance + direction[1];
-    const hz = -1 / distance + direction[2];
-    const slopeX = hx / Math.max(hy, 0.001), slopeZ = hz / Math.max(hy, 0.001);
-    const glow = Math.exp(-0.5 * ((slopeX / 0.09) ** 2 + (slopeZ / 0.075) ** 2));
+    const glow = waterSpecular([vx / distance, vy / distance, -1 / distance],
+      [0, 1, 0], source, waterWind, waterEnergy) * WATER_EXPOSURE;
     const fade = Math.min(1, (WATER_HORIZON - y) / 0.065);
-    const alpha = glow * visibility * fade * (0.12 + grain * 0.18);
+    const alpha = Math.min(0.55, glow * light.directIntensity * fade * (0.7 + grain * 0.6));
     if (alpha < 0.001) continue;
     glints.ctx.fillStyle = `rgba(240,224,180,${alpha})`;
     glints.ctx.fillRect(x * w, (1 - y) * h, length, 0.5 + fade);
@@ -877,20 +956,62 @@ function reflectedFallback(
   if (p.shadowMap) {
     glints.ctx.save();
     glints.ctx.globalCompositeOperation = "destination-out";
-    glints.ctx.globalAlpha = 0.85;
+    glints.ctx.globalAlpha = 1;
     glints.ctx.drawImage(p.shadowMap, shadowOffset.x, shadowOffset.y, w, h);
     glints.ctx.restore();
   }
   ctx.save();
   ctx.globalCompositeOperation = "source-atop";
-  if (p.shadowMap) {
-    ctx.globalAlpha = 0.18 * visibility;
-    ctx.drawImage(p.shadowMap, shadowOffset.x, shadowOffset.y, w, h);
-  }
   ctx.globalAlpha = 1;
   ctx.drawImage(glints.canvas, 0, 0);
   ctx.restore();
   return working.canvas;
+}
+
+type AtmosphereCache = {
+  sky: ReturnType<typeof surface>;
+  clouds: ReturnType<typeof surface>;
+  depths: Float32Array;
+  key: string;
+};
+const fallbackAtmosphere = new WeakMap<HTMLCanvasElement, AtmosphereCache>();
+
+/** Frozen weather; cache its density and recolor only when moon/light changes. */
+function fallbackSky(canvas: HTMLCanvasElement, options: FallbackOptions) {
+  const { width, height } = canvas;
+  const scale = Math.min(1, 280 / width, 220 / height);
+  const w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale));
+  let cache = fallbackAtmosphere.get(canvas);
+  if (!cache || cache.sky.canvas.width !== w || cache.sky.canvas.height !== h) {
+    cache = { sky: surface(w, h), clouds: surface(w, h), depths: new Float32Array(w * h * 2), key: "" };
+    fallbackAtmosphere.set(canvas, cache);
+  }
+  const key = `${width},${height},${options.air.x},${options.air.y}`;
+  const sky = cache.sky.ctx.createImageData(w, h), clouds = cache.clouds.ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const uv = { x: 0, y: 0.5 + (0.5 - (y + 0.5) / h) / OVERSCAN };
+    const base = sampleSkyBaseColor(uv, options.illumination.ambientGain);
+    const rowR = linearToSrgb(base[0]) * 255, rowG = linearToSrgb(base[1]) * 255,
+      rowB = linearToSrgb(base[2]) * 255;
+    for (let x = 0; x < w; x++) {
+      uv.x = 0.5 + ((x + 0.5) / w - 0.5) / OVERSCAN;
+      const i = y * w + x;
+      if (cache.key !== key) cache.depths.set(cloudOpticalDepth(uv, width / height, options.air), i * 2);
+      const cloud = sampleCloudColor(uv, width / height, options.air, options.moonSky,
+        options.illumination.incidentIntensity, options.illumination.ambientGain,
+        [cache.depths[i * 2], cache.depths[i * 2 + 1]]);
+      sky.data[i * 4] = rowR;
+      sky.data[i * 4 + 1] = rowG;
+      sky.data[i * 4 + 2] = rowB;
+      sky.data[i * 4 + 3] = 255;
+      for (let c = 0; c < 3; c++) clouds.data[i * 4 + c] = linearToSrgb(cloud[c]) * 255;
+      clouds.data[i * 4 + 3] = cloud[3] * 255;
+    }
+  }
+  cache.key = key;
+  cache.sky.ctx.putImageData(sky, 0, 0);
+  cache.clouds.ctx.putImageData(clouds, 0, 0);
+  return cache;
 }
 
 export function drawFallback(
@@ -907,19 +1028,26 @@ export function drawFallback(
   const defaultDirection = light.map((component) => component / magnitude);
   const direction = options?.direction ?? defaultDirection;
   const referenceDirection = options?.referenceDirection ?? defaultDirection;
-  const visibility = options?.visibility ?? 1;
   const parallax = options?.parallax ?? { x: 0, y: 0 };
   const moon = options?.moon ?? {
     x: 0.5 + (defaultMoon.x - 0.5) * OVERSCAN,
     y: 0.5 + (defaultMoon.y - 0.5) * OVERSCAN,
     radius: defaultMoon.radius * OVERSCAN,
   };
-  const sky = ctx.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, "#526f95");
-  sky.addColorStop(0.5, "#87a5b8");
-  sky.addColorStop(1, "#bfc7bf");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, w, h);
+  const air = options?.air ?? { x: 0, y: 0 };
+  const moonSky = options?.moonSky ?? { x: defaultMoon.x, y: defaultMoon.y };
+  const referenceMoonSky = options?.referenceMoonSky ?? {
+    x: defaultMoon.x + parallax.x * 2 / (w * OVERSCAN),
+    y: defaultMoon.y - parallax.y * 2 / (h * OVERSCAN),
+  };
+  const illumination = options?.illumination ?? sampleLighting(defaultMoon,
+    paintings.filter((p) => p.ridge).map((p) => ({ points: p.ridge!, depth: p.depth })),
+    w, h, parallax, (uv) => cloudTransmission(uv, w / h, air));
+  const settings: FallbackOptions = { moon, direction, referenceDirection, parallax,
+    illumination, air, moonSky, referenceMoonSky, waterWind: options?.waterWind ?? [1, 0], waterEnergy: options?.waterEnergy ?? 1,
+    mountainMask: options?.mountainMask ?? document.createElement("canvas") };
+  const atmosphere = fallbackSky(canvas, settings);
+  ctx.drawImage(atmosphere.sky.canvas, 0, 0, w, h);
   paintings.forEach((p) => {
     if (p.kind === "moon") {
       let working = fallbackMoon.get(canvas);
@@ -929,7 +1057,8 @@ export function drawFallback(
       }
       working.ctx.clearRect(0, 0, w, h);
       const radius = moon.radius * h;
-      working.ctx.drawImage(p.canvas, moon.x * w - radius * 3,
+      const litMoon = moonFallback(p, settings);
+      working.ctx.drawImage(litMoon, moon.x * w - radius * 3,
         (1 - moon.y) * h - radius * 3, radius * 6, radius * 6);
       if (options?.mountainMask) {
         working.ctx.save();
@@ -938,14 +1067,15 @@ export function drawFallback(
         working.ctx.restore();
       }
       ctx.drawImage(working.canvas, 0, 0);
+      ctx.drawImage(atmosphere.clouds.canvas, 0, 0, w, h);
       return;
     }
     const layer = p.kind === "water"
-      ? reflectedFallback(p, direction, visibility, {
+      ? reflectedFallback(p, settings, {
         x: parallax.x * p.canvas.width / (w * OVERSCAN),
         y: parallax.y * p.canvas.height / (h * OVERSCAN),
       })
-      : relitFallback(p, { direction, referenceDirection, visibility });
+      : relitFallback(p, settings);
     ctx.drawImage(layer, -w * (OVERSCAN - 1) / 2 + parallax.x * p.depth,
       -h * (OVERSCAN - 1) / 2 + parallax.y * p.depth, w * OVERSCAN, h * OVERSCAN);
   });
