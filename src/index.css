@@ -113,6 +113,9 @@ button:disabled {
 .site > [hidden] {
   display: none;
 }
+.site:not(.site--engaged):not(:has(.composer:focus-within, .dialog[open])) {
+  touch-action: pinch-zoom;
+}
 .tsukuyomi-toggle {
   position: fixed;
   z-index: 3;
