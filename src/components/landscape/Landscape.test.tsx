@@ -123,7 +123,16 @@ test("frames are throttled, rerenders retain the scene, and cleanup releases tex
     if (value instanceof THREE.Texture) textures.add(value);
   }));
   expect(textures.size).toBeGreaterThan(15);
-  expect(Array.from(textures).filter((texture) => texture instanceof THREE.DataTexture)).toHaveLength(1);
+  expect(Array.from(textures).filter((texture) => texture instanceof THREE.DataTexture)).toHaveLength(2);
+  // Water and both shallows layers share one half-float edge field at the bridge's parallax.
+  const edges = materials().find((m) => m.uniforms.uKind.value === 1)!.uniforms.uWaveBoundary.value as THREE.DataTexture;
+  expect(edges.type).toBe(THREE.HalfFloatType);
+  expect(edges.colorSpace).toBe(THREE.NoColorSpace);
+  expect(edges.magFilter).toBe(THREE.LinearFilter);
+  const shallows = materials().filter((m) => m.uniforms.uKind.value === 4);
+  expect(shallows.map((m) => m.uniforms.uWaveBoundary.value)).toEqual(shallows.map(() => edges));
+  expect(materials().find((m) => m.uniforms.uKind.value === 1)!.uniforms.uBoundaryParallax.value).toBe(1);
+  expect(shallows.map((m) => m.uniforms.uBoundaryParallax.value).sort()).toEqual([0, 1]);
   const disposals = Array.from(textures).map((texture) => jest.spyOn(texture, "dispose"));
   const button = getByRole("button", { name: "Move moon" });
   pointer(button, "pointerdown", { clientX: position(button).x, clientY: position(button).y });

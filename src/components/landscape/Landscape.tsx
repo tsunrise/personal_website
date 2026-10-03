@@ -15,6 +15,7 @@ import {
 import { vertex, skyFragment, cloudFragment, paintFragment, moonFragment, mistFragment } from "./shaders";
 
 const FRAME_INTERVAL = 1000 / 60;
+const BRIDGE_DEPTH = 4;
 
 function Landscape() {
   const host = useRef<HTMLDivElement>(null);
@@ -50,6 +51,7 @@ function Landscape() {
     const shadowOffset = { value: new THREE.Vector2() };
     const skyOffset = { value: new THREE.Vector2() };
     const cloudMap: { value: THREE.DataTexture | null } = { value: null };
+    const waveBoundary: { value: THREE.DataTexture | null } = { value: null };
     let illumination: LightingState;
     const light = {
       uMoon: { value: new THREE.Vector3() },
@@ -99,7 +101,7 @@ function Landscape() {
       textures.splice(0).forEach((t) => t.dispose());
       layers.length = 0;
       maskTexture = shadowTexture = undefined;
-      cloudMap.value = null;
+      cloudMap.value = waveBoundary.value = null;
     }
     function texture(canvas: HTMLCanvasElement) {
       const map = new THREE.CanvasTexture(canvas);
@@ -116,6 +118,9 @@ function Landscape() {
         uTime: { value: elapsed }, uAspect: { value: width / height },
         uKind: { value: kind }, uSize: { value: new THREE.Vector2(width, height) },
         uShadowOffset: shadowOffset,
+        uWaveBoundary: waveBoundary,
+        // The edge field shares the bridge's depth-4 parallax.
+        uBoundaryParallax: { value: BRIDGE_DEPTH - depth },
         uSkyOffset: skyOffset,
         uCloudMap: cloudMap,
         uMountainMask: { value: maskTexture },
@@ -269,6 +274,18 @@ function Landscape() {
       cloudMap.value.flipY = false;
       cloudMap.value.needsUpdate = true;
       textures.push(cloudMap.value);
+      const edges = paintings.find((p) => p.waveBoundary)?.waveBoundary;
+      if (edges) {
+        // Half floats keep centimetre wave phase and remain linearly filterable.
+        const half = new Uint16Array(edges.data.length);
+        edges.data.forEach((value, i) => { half[i] = THREE.DataUtils.toHalfFloat(value); });
+        waveBoundary.value = new THREE.DataTexture(half, edges.width, edges.height, THREE.RGBAFormat, THREE.HalfFloatType);
+        waveBoundary.value.colorSpace = THREE.NoColorSpace;
+        waveBoundary.value.minFilter = waveBoundary.value.magFilter = THREE.LinearFilter;
+        waveBoundary.value.generateMipmaps = false;
+        waveBoundary.value.needsUpdate = true;
+        textures.push(waveBoundary.value);
+      }
       plane(skyFragment, 0, 0);
       plane(cloudFragment, 1.25, 0);
       geese = createGeese(scene, flightSchedule);

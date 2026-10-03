@@ -4,6 +4,7 @@ import { colorGLSL, moonRadianceGLSL } from "./lighting";
 import { OVERSCAN } from "./moon";
 import { cloudGLSL } from "./cloudShaders";
 import { waterLightingGLSL, WATER_EXPOSURE } from "./waterLighting";
+import { waveBoundaryGLSL } from "./waveBoundary";
 
 export const vertex = `varying vec2 vUv;
 void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
@@ -100,6 +101,8 @@ uniform sampler2D uWindMap;
 uniform sampler2D uShadowMap;
 uniform sampler2D uNormalMap;
 uniform vec2 uShadowOffset;
+uniform sampler2D uWaveBoundary;
+uniform float uBoundaryParallax;
 uniform vec2 uSkyOffset;
 uniform vec2 uSize;
 uniform float uAspect;
@@ -132,6 +135,9 @@ ${noise}
 ${colorGLSL}
 ${cloudGLSL}
 ${waterLightingGLSL}
+${waveBoundaryGLSL}
+// Distance, normal and reflectance of the nearest bridge or bank edge.
+vec4 waveBoundary;
 // Reconstruct a point on the painted plant in camera space, bend it in world
 // X/Z, then divide by its new depth. The same virtual camera views the water.
 vec2 projectPlant(vec2 rest,vec3 mask,vec2 load,bool reed){
@@ -158,10 +164,16 @@ void addWave(inout vec2 slope,vec2 world,vec2 footprint,vec2 direction,float k,f
  vec2 windDirection=uWaterWind/max(length(uWaterWind),.001);
  float alignment=max(dot(direction,windDirection),0.);
  float energy=sqrt(max(uWaterEnergy,0.))*(.16+.84*pow(alignment,4.));
+ float theta=k*dot(direction,world-uCurrentOffset)-omega*uTime+phase;
+ // Edges reflect approaching crests and shelter the water in their lee.
+ vec2 mirrored;
+ vec3 edge=boundaryWave(direction,k,theta,waveBoundary,mirrored);
  // Suppress waves smaller than a few pixels in the distance, preventing shimmer.
  float resolved=1.-smoothstep(.8,2.7,k*dot(abs(direction),footprint));
- float theta=k*dot(direction,world-uCurrentOffset)-omega*uTime+phase;
- slope+=direction*(amplitude*k*energy*resolved*cos(theta));
+ float mirroredResolved=1.-smoothstep(.8,2.7,k*dot(abs(mirrored),footprint));
+ float scale=amplitude*k*energy;
+ slope+=direction*(scale*resolved*edge.x*cos(theta))+
+   mirrored*(scale*mirroredResolved*edge.y*cos(edge.z));
 }
 void main(){
  vec2 uv=vUv;
@@ -191,6 +203,8 @@ void main(){
   // compresses ripples at the horizon rather than spacing them evenly on screen.
   vec2 ray=vec2((vUv.x-.5)*uAspect,1.);
   vec2 world=ray*eyeHeight/distanceBelow;
+  // The edge field is drawn with the bridge; undo this layer's parallax.
+  waveBoundary=texture2D(uWaveBoundary,vUv-uShadowOffset*uBoundaryParallax);
   vec2 footprint=vec2(eyeHeight*uAspect/(distanceBelow*uSize.x),
     eyeHeight/(distanceBelow*distanceBelow*uSize.y));
   ${spectrum}

@@ -4,6 +4,13 @@ import { normalColor } from "./lighting";
 type Point = { x: number; y: number };
 type Random = () => number;
 
+/** Painted waterlines in canvas pixels, for wave reflection and sheltering. */
+export interface BankWaterlines {
+  shores: Point[][];
+  /** Closed contact footprints of the footing stones at the waterline. */
+  stones: Point[][];
+}
+
 /** Quiet earth washes: one continuous foreground shore and a receding far headland. */
 export function paintBanks(
   ctx: CanvasRenderingContext2D,
@@ -12,9 +19,10 @@ export function paintBanks(
   h: number,
   random: Random,
   normalCtx?: CanvasRenderingContext2D,
-) {
+): BankWaterlines {
   const g = createBridgeGeometry(w, h);
   const s = g.scale;
+  const stones: Point[][] = [];
   const landing = g.project(-g.halfLength, g.endHeight, -g.halfWidth);
   const back = g.project(-g.halfLength - 0.03, g.endHeight, g.halfWidth);
   const heel = g.project(-g.halfLength, 0, -g.halfWidth);
@@ -335,10 +343,17 @@ export function paintBanks(
     contact.ellipse(x, y + s * 0.025, r * 1.14, s * 0.035, 0, 0, Math.PI * 2);
     contact.fillStyle = "rgba(36,66,72,.17)";
     contact.fill();
+    const footprint: Point[] = [];
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      footprint.push(point(x + Math.cos(angle) * r * 1.14, y + s * 0.025 + Math.sin(angle) * s * 0.035));
+    }
+    stones.push(footprint);
   };
   stone(toe.x - s * 0.31, toe.y + s * 0.055, s * 0.24, s * 0.145);
   stone(toe.x - s * 0.02, toe.y + s * 0.058, s * 0.19, s * 0.11);
   stone(toe.x - s * 0.18, toe.y + s * 0.082, s * 0.15, s * 0.09);
   stone(farToe.x + s * 0.22, farToe.y + s * 0.046, s * 0.24, s * 0.14);
   stone(farToe.x + s * 0.015, farToe.y + s * 0.056, s * 0.15, s * 0.075);
+  return { shores: [farShore, foreground, near], stones };
 }

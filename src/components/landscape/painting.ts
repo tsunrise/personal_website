@@ -7,6 +7,10 @@ import { lightResponse, lightingGain, normalColor, LightingState, sampleLighting
 import { cloudOpticalDepth, cloudTransmission, sampleCloudColor, sampleSkyBaseColor, sampleSkyColor } from "./clouds";
 import { waterSpecular, WATER_EXPOSURE } from "./waterLighting";
 import { OVERSCAN } from "./moon";
+import {
+  BANK_REFLECTANCE, bridgeBarriers, createWaveBoundary, screenBarrier,
+  STONE_REFLECTANCE, WaveBoundaryField,
+} from "./waveBoundary";
 
 // All landscape textures are drawn locally from seeded geometry. No image assets.
 export function seeded(seed: number) {
@@ -24,6 +28,8 @@ export interface Painting {
   kind: "paint" | "moon" | "water" | "willow" | "reeds" | "shallows";
   windMap?: HTMLCanvasElement;
   shadowMap?: HTMLCanvasElement;
+  /** River edges for wave reflection and lee sheltering, in bridge-layer UV. */
+  waveBoundary?: WaveBoundaryField;
   fallback?: HTMLCanvasElement;
   normalMap?: HTMLCanvasElement;
   lightStrength?: number;
@@ -290,7 +296,12 @@ export function paintLandscape(w: number, h: number): Painting[] {
   const bankNormals = surface(w, h);
   paintings[paintings.length - 1].normalMap = bankNormals.canvas;
   paintings[paintings.length - 1].lightStrength = 0.26;
-  paintBanks(ctx, bankContact, w, h, seeded(289), bankNormals.ctx);
+  const waterlines = paintBanks(ctx, bankContact, w, h, seeded(289), bankNormals.ctx);
+  riverPainting.waveBoundary = createWaveBoundary(w, h, [
+    ...bridgeBarriers(geometry),
+    ...waterlines.shores.map((shore) => screenBarrier(shore, w, h, BANK_REFLECTANCE)),
+    ...waterlines.stones.map((stone) => screenBarrier(stone, w, h, STONE_REFLECTANCE, true, 0)),
+  ]);
   const bankCanvas = ctx.canvas;
   // Reed beds include submerged stems and reflections beneath their living foliage.
   const shallows = add(3, "shallows");
