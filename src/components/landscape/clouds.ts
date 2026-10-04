@@ -19,37 +19,57 @@ function hash(x: number, y: number, seed: number) {
   return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
 }
 
-/** Integer lattice periods make the broad shapes and wisps seamless together. */
-function noise(x: number, y: number, columns: number, rows: number, seed: number) {
-  const px = x * columns, py = y * rows;
-  const ix = Math.floor(px), iy = Math.floor(py);
-  const tx = smooth(0, 1, px - ix), ty = smooth(0, 1, py - iy);
-  const sample = (dx: number, dy: number) => hash(wrap(ix + dx, columns), wrap(iy + dy, rows), seed);
-  return mix(mix(sample(0, 0), sample(1, 0), tx), mix(sample(0, 1), sample(1, 1), tx), ty);
-}
-
-function broadNoise(x: number, y: number) {
-  return noise(x, y, 12, 12, 731) * 0.58 + noise(x, y, 24, 24, 1297) * 0.27 +
-    noise(x, y, 48, 48, 1879) * 0.15;
+/**
+ * Smoothed value noise on a periodic lattice, tabulated for every atlas texel:
+ * hashes once per lattice cell and smoothed fractions once per row and column.
+ * Integer periods make the broad shapes and wisps seamless together.
+ */
+function noiseTable(columns: number, rows: number, seed: number) {
+  const lattice = new Float64Array(columns * rows);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < columns; x++) lattice[y * columns + x] = hash(x, y, seed);
+  }
+  const axis = (period: number) => {
+    const cell = new Int32Array(SIZE), next = new Int32Array(SIZE), weight = new Float64Array(SIZE);
+    for (let i = 0; i < SIZE; i++) {
+      const p = ((i + 0.5) / SIZE) * period, index = Math.floor(p);
+      cell[i] = wrap(index, period);
+      next[i] = wrap(index + 1, period);
+      weight[i] = smooth(0, 1, p - index);
+    }
+    return { cell, next, weight };
+  };
+  const xs = axis(columns), ys = axis(rows), out = new Float64Array(SIZE * SIZE);
+  for (let y = 0; y < SIZE; y++) {
+    const row = ys.cell[y] * columns, below = ys.next[y] * columns, ty = ys.weight[y];
+    for (let x = 0; x < SIZE; x++) {
+      const left = xs.cell[x], right = xs.next[x], tx = xs.weight[x];
+      out[y * SIZE + x] = mix(
+        mix(lattice[row + left], lattice[row + right], tx),
+        mix(lattice[below + left], lattice[below + right], tx),
+        ty,
+      );
+    }
+  }
+  return out;
 }
 
 export function getCloudAtlas(): CloudAtlas {
   if (atlas) return atlas;
   const data = new Uint8Array(SIZE * SIZE * 4);
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const u = (x + 0.5) / SIZE, v = (y + 0.5) / SIZE;
-      const broad = broadNoise(u, v);
-      const nearWisps = noise(u, v, 8, 32, 2777) * 0.7 + noise(u, v, 24, 64, 3089) * 0.3;
-      const farWisps = noise(u, v, 8, 32, 3911) * 0.7 + noise(u, v, 24, 64, 4721) * 0.3;
-      const near = Math.pow(smooth(0.49, 0.75, broad * 0.7 + nearWisps * 0.3), 1.3);
-      const far = Math.pow(smooth(0.49, 0.75, broad * 0.7 + farWisps * 0.3), 1.3);
-      const pixel = (y * SIZE + x) * 4;
-      // R/G each encode optical depth / 2; B is reserved, A is not opacity.
-      data[pixel] = Math.round(near * 255);
-      data[pixel + 1] = Math.round(far * 255);
-      data[pixel + 3] = 255;
-    }
+  const broad12 = noiseTable(12, 12, 731), broad24 = noiseTable(24, 24, 1297), broad48 = noiseTable(48, 48, 1879);
+  const near8 = noiseTable(8, 32, 2777), near24 = noiseTable(24, 64, 3089);
+  const far8 = noiseTable(8, 32, 3911), far24 = noiseTable(24, 64, 4721);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    const broad = broad12[i] * 0.58 + broad24[i] * 0.27 + broad48[i] * 0.15;
+    const nearWisps = near8[i] * 0.7 + near24[i] * 0.3;
+    const farWisps = far8[i] * 0.7 + far24[i] * 0.3;
+    const near = Math.pow(smooth(0.49, 0.75, broad * 0.7 + nearWisps * 0.3), 1.3);
+    const far = Math.pow(smooth(0.49, 0.75, broad * 0.7 + farWisps * 0.3), 1.3);
+    // R/G each encode optical depth / 2; B is reserved, A is not opacity.
+    data[i * 4] = Math.round(near * 255);
+    data[i * 4 + 1] = Math.round(far * 255);
+    data[i * 4 + 3] = 255;
   }
   atlas = { size: SIZE, data };
   return atlas;

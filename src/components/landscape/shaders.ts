@@ -37,9 +37,12 @@ uniform float uAspect;
 uniform vec2 uAirOffset;
 uniform float uIncidentIntensity;
 uniform float uAmbientGain;
+uniform sampler2D uCoverage;
 ${colorGLSL}
 ${cloudGLSL}
 void main(){
+ // Skip cells that later opaque mountains or water completely cover.
+ if(texture2D(uCoverage,vUv).r<.5)discard;
  vec4 cloud=cloudColor(vUv);
  gl_FragColor=vec4(linearToSrgb(cloud.rgb),cloud.a);
 }`;
@@ -102,6 +105,9 @@ uniform sampler2D uShadowMap;
 uniform sampler2D uNormalMap;
 uniform vec2 uShadowOffset;
 uniform sampler2D uWaveBoundary;
+uniform sampler2D uCoverage;
+// Painting textures hold only this UV rectangle (offset, size) of the layer.
+uniform vec4 uCrop;
 uniform float uBoundaryParallax;
 uniform vec2 uSkyOffset;
 uniform vec2 uSize;
@@ -136,6 +142,7 @@ ${colorGLSL}
 ${cloudGLSL}
 ${waterLightingGLSL}
 ${waveBoundaryGLSL}
+vec2 cropped(vec2 uv){return (uv-uCrop.xy)/uCrop.zw;}
 // Distance, normal and reflectance of the nearest bridge or bank edge.
 vec4 waveBoundary;
 // Reconstruct a point on the painted plant in camera space, bend it in world
@@ -176,6 +183,9 @@ void addWave(inout vec2 slope,vec2 world,vec2 footprint,vec2 direction,float k,f
    mirrored*(scale*mirroredResolved*edge.y*cos(edge.z));
 }
 void main(){
+ // Coarse occupancy, dilated for filtering and displacement: skip empty cells
+ // before any wave, wind or lighting work.
+ if(texture2D(uCoverage,vUv).r<.5)discard;
  vec2 uv=vUv;
  bool water=(uKind>.5&&uKind<1.5)||uKind>3.5;
  vec2 slope=vec2(0.);
@@ -184,19 +194,22 @@ void main(){
  float waterFade=smoothstep(0.,.065,horizon-vUv.y);
  if(uKind>1.5&&uKind<3.5){
   bool reed=uKind>2.5;
-  vec2 bend=reed?uReeds:uWillow;
-  vec2 airSample=vec2(vUv.x*uAspect,vUv.y)*5.-uAirOffset*.075;
-  // Keep the hanging willow closer to vertical: reduce its sustained bend,
-  // while retaining the same spatial gust variation and leaf flutter.
-  float shelter=(reed?.74:.34)+.52*noise(airSample);
-  float flutter=(noise(airSample*5.-uAirOffset*.24)-.5)*length(uWind)*.40;
-  vec2 direction=uWind/max(length(uWind),.001);
-  vec2 load=bend*shelter+direction*flutter;
-  // Invert the small perspective deformation to sample the resting artwork.
-  // Two iterations include the changed depth/flexibility at the source point.
-  for(int i=0;i<2;i++){
-   vec3 mask=texture2D(uWindMap,uv).rgb;
-   uv=vUv-(projectPlant(uv,mask,load,reed)-uv);
+  // Zero flexibility pins the artwork in place: no displacement to invert.
+  if(texture2D(uWindMap,cropped(vUv)).r>0.){
+   vec2 bend=reed?uReeds:uWillow;
+   vec2 airSample=vec2(vUv.x*uAspect,vUv.y)*5.-uAirOffset*.075;
+   // Keep the hanging willow closer to vertical: reduce its sustained bend,
+   // while retaining the same spatial gust variation and leaf flutter.
+   float shelter=(reed?.74:.34)+.52*noise(airSample);
+   float flutter=(noise(airSample*5.-uAirOffset*.24)-.5)*length(uWind)*.40;
+   vec2 direction=uWind/max(length(uWind),.001);
+   vec2 load=bend*shelter+direction*flutter;
+   // Invert the small perspective deformation to sample the resting artwork.
+   // Two iterations include the changed depth/flexibility at the source point.
+   for(int i=0;i<2;i++){
+    vec3 mask=texture2D(uWindMap,cropped(uv)).rgb;
+    uv=vUv-(projectPlant(uv,mask,load,reed)-uv);
+   }
   }
  }else if(water&&vUv.y<horizon){
   // Ray/plane intersection in metres, eye 1.4 m above the river. This naturally
@@ -213,12 +226,12 @@ void main(){
   // Distort reflected scenery with the same normals that produce moon glints.
   uv+=vec2(slope.x*.018,slope.y*.012)*waterFade;
  }
- vec4 col=texture2D(uMap,uv);
+ vec4 col=texture2D(uMap,cropped(uv));
  if(col.a<.003)discard;
  col.rgb=srgbToLinear(col.rgb);
  float gain=uAmbientGain;
  if(uLightStrength>0.){
-  vec4 encoded=texture2D(uNormalMap,uv);
+  vec4 encoded=texture2D(uNormalMap,cropped(uv));
   if(encoded.a>.003){
    vec3 surfaceNormal=normalize(encoded.rgb*2.-1.);
    float current=dot(surfaceNormal,uLightDirection);
@@ -259,9 +272,11 @@ void main(){
 export const mistFragment = `
 varying vec2 vUv;uniform float uAspect;uniform vec2 uAirOffset;
 uniform float uAmbientGain;
+uniform sampler2D uCoverage;
 ${noise}
 ${colorGLSL}
 void main(){
+ if(texture2D(uCoverage,vUv).r<.5)discard;
  vec2 p=vec2(vUv.x*uAspect,vUv.y)-uAirOffset*vec2(.001,.00008);
  float fog=fbm(p*vec2(2.,18.));
  float band=exp(-pow((vUv.y-.34)*15.,2.));

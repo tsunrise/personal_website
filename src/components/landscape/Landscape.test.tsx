@@ -4,6 +4,7 @@ import Landscape from "./Landscape";
 import { moonPosition } from "./composition";
 import { screenMoon } from "./moon";
 import * as clouds from "./clouds";
+import * as coverage from "./coverage";
 import * as painting from "./painting";
 import { cloudFragment, moonFragment } from "./shaders";
 
@@ -70,6 +71,7 @@ beforeEach(() => {
     mockRenderer = {
       domElement: document.createElement("canvas"), setSize: jest.fn(),
       setPixelRatio: jest.fn(), render: jest.fn(), compile: jest.fn(), dispose: jest.fn(),
+      initTexture: jest.fn(),
     };
     return mockRenderer;
   });
@@ -123,7 +125,20 @@ test("frames are throttled, rerenders retain the scene, and cleanup releases tex
     if (value instanceof THREE.Texture) textures.add(value);
   }));
   expect(textures.size).toBeGreaterThan(15);
-  expect(Array.from(textures).filter((texture) => texture instanceof THREE.DataTexture)).toHaveLength(2);
+  const data = Array.from(textures).filter((texture) => texture instanceof THREE.DataTexture);
+  expect(data.filter((texture) => texture.format !== THREE.RedFormat)).toHaveLength(2);
+  // One nearest-filtered occupancy grid per painting layer, plus clouds and mist.
+  const cells = data.filter((texture) => texture.format === THREE.RedFormat);
+  expect(cells).toHaveLength(materials().filter((m) => m.uniforms.uCoverage).length);
+  cells.forEach((texture) => {
+    expect(texture.magFilter).toBe(THREE.NearestFilter);
+    expect(texture.unpackAlignment).toBe(1);
+  });
+  // Paintings are never minified, so they skip mipmaps.
+  Array.from(textures).filter((texture) => texture instanceof THREE.CanvasTexture).forEach((texture) => {
+    expect(texture.generateMipmaps).toBe(false);
+    expect(texture.minFilter).toBe(THREE.LinearFilter);
+  });
   // Water and both shallows layers share one half-float edge field at the bridge's parallax.
   const edges = materials().find((m) => m.uniforms.uKind.value === 1)!.uniforms.uWaveBoundary.value as THREE.DataTexture;
   expect(edges.type).toBe(THREE.HalfFloatType);
@@ -178,7 +193,11 @@ test("shared weather and lighting survive hidden tabs and resize without catchin
   const stopped = snapshot(), renders = mockRenderer.render.mock.calls.length;
   const hidden = jest.spyOn(document, "hidden", "get").mockReturnValue(true);
   fireEvent(document, new Event("visibilitychange"));
-  tick(20000); resize(); tick();
+  // Rebuild through another size and back: an unchanged size is never rebuilt.
+  const box = (width: number) => (HTMLElement.prototype.getBoundingClientRect as jest.Mock).mockReturnValue({
+    width, height: 600, x: 0, y: 0, top: 0, left: 0, right: width, bottom: 600, toJSON: () => ({}),
+  });
+  tick(20000); box(820); resize(); box(800); resize(); tick();
   expect(snapshot()).toEqual(stopped);
   expect(mockRenderer.render).toHaveBeenCalledTimes(renders);
   materials().forEach((material) => {
@@ -443,4 +462,85 @@ test("new mounts restore the default moon without persisting moved coordinates",
   expect(position(second.getByRole("button", { name: "Move moon" }))).toEqual(initial);
   expect(read).not.toHaveBeenCalled();
   expect(write).not.toHaveBeenCalled();
+});
+
+test("an unchanged size never rebuilds the scene", () => {
+  fakeResizeTimers();
+  const paint = jest.spyOn(painting, "paintLandscape");
+  render(<Landscape />);
+  const scene = mockRenderer.compile.mock.calls[0][0] as THREE.Scene;
+  const children = [...scene.children];
+  // ResizeObserver reports the initial size once it starts observing.
+  resize();
+  expect(paint).toHaveBeenCalledTimes(1);
+  expect(scene.children).toEqual(children);
+  expect(mockRenderer.setSize).toHaveBeenCalledTimes(1);
+});
+
+test("paintings upload once, release their canvases, and repaint for the Canvas fallback", () => {
+  const paint = jest.spyOn(painting, "paintLandscape");
+  render(<Landscape />);
+  tick();
+  // WebGL computes ripples live and skips the fallback-only static river.
+  expect(paint).toHaveBeenLastCalledWith(expect.any(Number), expect.any(Number), false);
+  const [paintings] = paint.mock.results.map((result) => result.value as painting.Painting[]);
+  const river = paintings.find((p) => p.kind === "water")!;
+  expect(river.fallback).toBeUndefined();
+  const uploaded = mockRenderer.initTexture.mock.calls.map(([map]: [THREE.Texture]) => map);
+  materials().filter((m) => m.uniforms.uMap).forEach((m) => expect(uploaded).toContain(m.uniforms.uMap.value));
+  paintings.forEach((p) => {
+    expect(p.canvas.width).toBe(0);
+    if (p.normalMap) expect(p.normalMap.width).toBe(0);
+  });
+  // The river's light-occlusion mask is repainted whenever the moon moves.
+  expect(river.shadowMap!.width).toBeGreaterThan(0);
+  fireEvent(mockRenderer.domElement, new Event("webglcontextlost", { cancelable: true }));
+  expect(paint).toHaveBeenCalledTimes(2);
+  expect(paint).toHaveBeenLastCalledWith(expect.any(Number), expect.any(Number), true);
+  const repainted = paint.mock.results[1].value as painting.Painting[];
+  expect(repainted.find((p) => p.kind === "water")!.fallback).toBeInstanceOf(HTMLCanvasElement);
+  expect(repainted.every((p) => p.canvas.width > 0)).toBe(true);
+});
+
+test("each layer rasterizes only its visible cells and samples a cropped texture", () => {
+  const measure = jest.spyOn(coverage, "measureCells").mockImplementation((width, height, requests) => {
+    const columns = Math.ceil(width / coverage.COVERAGE_CELL), rows = Math.ceil(height / coverage.COVERAGE_CELL);
+    // Every layer occupies only the lower-left quarter; occluders cover it fully.
+    const quarter = coverage.rectCells({ x0: 0, y0: 0, x1: 0.5, y1: 0.5 }, columns, rows);
+    return { columns, rows, layers: requests.map(({ occluder }) => ({ occupied: quarter, opaque: occluder ? quarter : null })) };
+  });
+  render(<Landscape />);
+  expect(measure).toHaveBeenCalledTimes(1);
+  const scene = mockRenderer.compile.mock.calls[0][0] as THREE.Scene;
+  const meshes = scene.children.filter((child) => (child as THREE.Mesh).material instanceof THREE.ShaderMaterial) as THREE.Mesh[];
+  const uniforms = (mesh: THREE.Mesh) => (mesh.material as THREE.ShaderMaterial).uniforms;
+  const uvs = (mesh: THREE.Mesh) => Array.from(mesh.geometry.getAttribute("uv").array as Float32Array);
+  const willow = meshes.find((mesh) => uniforms(mesh).uKind.value === 2)!;
+  // The topmost layer is never hidden: its quad is its dilated content bounds.
+  expect(willow.visible).toBe(true);
+  const [x0, y1, x1] = uvs(willow);
+  expect(x0).toBe(0);
+  expect(x1).toBeGreaterThan(0.5);
+  expect(x1).toBeLessThan(0.6);
+  expect(y1).toBeGreaterThan(0.5);
+  const crop = uniforms(willow).uCrop.value as THREE.Vector4;
+  expect(crop.z).toBeCloseTo(x1, 2);
+  // Mountains beneath later opaque layers shade only the one-cell parallax margin.
+  const cell = (mesh: THREE.Mesh, u: number, v: number) => {
+    const { data, width, height } = (uniforms(mesh).uCoverage.value as THREE.DataTexture).image;
+    return data[Math.floor(v * height) * width + Math.floor(u * width)];
+  };
+  expect(cell(willow, 0.25, 0.25)).toBe(255);
+  expect(cell(willow, 0.75, 0.75)).toBe(0);
+  meshes.filter((mesh) => [2, 3, 4].includes(mesh.renderOrder)).forEach((mesh) => {
+    expect(cell(mesh, 0.25, 0.25)).toBe(0);
+    expect(cell(mesh, 0.5, 0.25)).toBe(255);
+  });
+  // The moon quad hugs its sprite rather than covering the viewport.
+  const moon = meshes.find((mesh) => mesh.renderOrder === 1)!;
+  const [mx0, my1, mx1, , , my0] = uvs(moon);
+  const { x, y, z } = uniforms(moon).uMoonScreen.value;
+  expect((mx0 + mx1) / 2).toBeCloseTo(x);
+  expect((my0 + my1) / 2).toBeCloseTo(y);
+  expect(my1 - my0).toBeCloseTo(6 * z);
 });

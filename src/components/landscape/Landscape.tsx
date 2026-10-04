@@ -12,10 +12,35 @@ import {
   mountainCoverage, OVERSCAN, paintMountainMask, Point, RESET_SECONDS,
   Ridge, screenMoon, screenToScene,
 } from "./moon";
+import { Coverage, measureCells, occlusion, rectCells, toCoverage, UvRect } from "./coverage";
 import { vertex, skyFragment, cloudFragment, paintFragment, moonFragment, mistFragment } from "./shaders";
 
 const FRAME_INTERVAL = 1000 / 60;
 const BRIDGE_DEPTH = 4;
+const FULL: UvRect = { x0: 0, y0: 0, x1: 1, y1: 1 };
+// Cloud optical depth is zero below this sky UV; mist is invisible outside its band.
+const CLOUD_RECT: UvRect = { x0: 0, y0: 0.15, x1: 1, y1: 1 };
+const MIST_RECT: UvRect = { x0: 0, y0: 0.18, x1: 1, y1: 0.5 };
+
+/** A full-plane quad trimmed to a UV rectangle; each pixel keeps the same vUv. */
+function setQuad(geometry: THREE.BufferGeometry, { x0, y0, x1, y1 }: UvRect) {
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
+  [[x0, y1], [x1, y1], [x0, y0], [x1, y0]].forEach(([x, y], i) => {
+    position.setXYZ(i, x * 2 - 1, y * 2 - 1, 0);
+    uv.setXY(i, x, y);
+  });
+  position.needsUpdate = uv.needsUpdate = true;
+  geometry.computeBoundingSphere();
+}
+function quad(rect: UvRect) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(12, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(8, 2));
+  geometry.setIndex([0, 2, 1, 2, 3, 1]);
+  setQuad(geometry, rect);
+  return geometry;
+}
 
 function Landscape() {
   const host = useRef<HTMLDivElement>(null);
@@ -41,7 +66,11 @@ function Landscape() {
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     camera.position.z = 10;
-    const geometry = new THREE.PlaneGeometry(2, 2);
+    const geometries: THREE.BufferGeometry[] = [];
+    let moonGeometry: THREE.BufferGeometry | undefined;
+    // Painting canvases are freed once uploaded; the Canvas fallback repaints them.
+    let released = false;
+    const crops: HTMLCanvasElement[] = [];
     const materials: THREE.ShaderMaterial[] = [];
     const textures: THREE.Texture[] = [];
     const layers: { mesh: THREE.Mesh; depth: number; moon: boolean }[] = [];
@@ -98,6 +127,8 @@ function Landscape() {
       geese = undefined;
       scene.clear();
       materials.splice(0).forEach((m) => m.dispose());
+      geometries.splice(0).forEach((g) => g.dispose());
+      moonGeometry = undefined;
       textures.splice(0).forEach((t) => t.dispose());
       layers.length = 0;
       maskTexture = shadowTexture = undefined;
@@ -106,10 +137,35 @@ function Landscape() {
     function texture(canvas: HTMLCanvasElement) {
       const map = new THREE.CanvasTexture(canvas);
       map.colorSpace = THREE.NoColorSpace;
+      // Paintings are drawn at or above display density, so mipmaps would go
+      // unused while adding a third more memory and upload work.
+      map.generateMipmaps = false;
+      map.minFilter = THREE.LinearFilter;
       textures.push(map);
       return map;
     }
-    function plane(fragmentShader: string, order: number, depth: number, painting?: Painting) {
+    function coverageTexture({ data, columns, rows }: Coverage) {
+      const map = new THREE.DataTexture(data, columns, rows, THREE.RedFormat, THREE.UnsignedByteType);
+      map.colorSpace = THREE.NoColorSpace;
+      map.minFilter = map.magFilter = THREE.NearestFilter;
+      map.generateMipmaps = false;
+      map.unpackAlignment = 1;
+      map.needsUpdate = true;
+      textures.push(map);
+      return map;
+    }
+    /** Copies a painting's content rectangle on the same texel grid. */
+    function cropped(canvas: HTMLCanvasElement, [x, y, w, h]: number[]) {
+      if (x === 0 && y === 0 && w === canvas.width && h === canvas.height) return canvas;
+      const copy = document.createElement("canvas");
+      copy.width = w;
+      copy.height = h;
+      copy.getContext("2d")?.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+      crops.push(copy);
+      return copy;
+    }
+    function plane(fragmentShader: string, order: number, depth: number, painting?: Painting,
+      rect: UvRect | null = FULL, cells?: Coverage, crop: UvRect = FULL) {
       const isMoon = painting?.kind === "moon";
       const kind = painting?.kind === "water" ? 1 : painting?.kind === "willow" ? 2
         : painting?.kind === "reeds" ? 3 : painting?.kind === "shallows" ? 4 : 0;
@@ -128,20 +184,30 @@ function Landscape() {
         uTwoSided: { value: painting?.twoSided ? 1 : 0 },
       };
       if (painting) {
-        uniforms.uMap = { value: texture(painting.canvas) };
-        uniforms.uNormalMap = { value: painting.normalMap ? texture(painting.normalMap) : uniforms.uMap.value };
-        if (painting.windMap) uniforms.uWindMap = { value: texture(painting.windMap) };
+        // Upload only the content rectangle, snapped to whole painting texels.
+        const { width: w, height: h } = painting.canvas;
+        const x = Math.floor(crop.x0 * w), y = Math.floor((1 - crop.y1) * h);
+        const pixels = [x, y, Math.max(1, Math.ceil(crop.x1 * w) - x), Math.max(1, Math.ceil((1 - crop.y0) * h) - y)];
+        uniforms.uCrop = { value: new THREE.Vector4(x / w, 1 - (y + pixels[3]) / h, pixels[2] / w, pixels[3] / h) };
+        uniforms.uMap = { value: texture(cropped(painting.canvas, pixels)) };
+        uniforms.uNormalMap = { value: painting.normalMap ? texture(cropped(painting.normalMap, pixels)) : uniforms.uMap.value };
+        if (painting.windMap) uniforms.uWindMap = { value: texture(cropped(painting.windMap, pixels)) };
         if (painting.shadowMap) {
           shadowTexture = texture(painting.shadowMap);
           uniforms.uShadowMap = { value: shadowTexture };
         }
       }
+      if (cells) uniforms.uCoverage = { value: coverageTexture(cells) };
       const material = new THREE.ShaderMaterial({
         vertexShader: vertex, fragmentShader, uniforms, transparent: order !== 0,
         depthTest: false, depthWrite: false,
       });
       materials.push(material);
+      const geometry = quad(rect ?? FULL);
+      geometries.push(geometry);
+      if (isMoon) moonGeometry = geometry;
       const mesh = new THREE.Mesh(geometry, material);
+      mesh.visible = !!rect;
       mesh.renderOrder = order;
       mesh.scale.setScalar(isMoon ? 1 : OVERSCAN);
       scene.add(mesh);
@@ -158,6 +224,13 @@ function Landscape() {
       coverage = mountainCoverage(moon, ridges, width, height, point);
       light.uMoon.value.set(currentLight.moon.x, currentLight.moon.y, moon.radius);
       light.uMoonScreen.value.set(visible.x / width, 1 - visible.y / height, visible.radius / height);
+      if (moonGeometry) {
+        // Rasterize only the sprite square instead of discarding the whole screen.
+        const { x, y, z } = light.uMoonScreen.value, reach = z * 3;
+        setQuad(moonGeometry, {
+          x0: x - reach * height / width, x1: x + reach * height / width, y0: y - reach, y1: y + reach,
+        });
+      }
       light.uLightDirection.value.fromArray(currentLight.direction);
       light.uDefaultLightDirection.value.fromArray(reference.direction);
       button!.style.left = `${visible.x}px`;
@@ -222,6 +295,7 @@ function Landscape() {
       if (disposed) return;
       fallback = true;
       clearScene();
+      if (released || !paintings.some((p) => p.fallback)) paint();
       if (!fallbackCanvas) {
         fallbackCanvas = document.createElement("canvas");
         fallbackCanvas.setAttribute("aria-hidden", "true");
@@ -245,20 +319,38 @@ function Landscape() {
       if (button!.hasPointerCapture?.(active.id)) button!.releasePointerCapture(active.id);
       target.x = target.y = 0;
     }
-    function resize() {
-      if (disposed) return;
-      releaseDrag(true);
-      const box = container!.getBoundingClientRect();
-      width = Math.max(1, Math.round(box.width));
-      height = Math.max(1, Math.round(box.height));
-      const initial = moonPosition(width, height);
-      moon = clampMoon(userPlaced ? { ...moon, radius: initial.radius } : initial, width, height, point);
-      if (reset) reset = { from: moon, elapsed: 0 };
+    function paint() {
       const scale = Math.min(1.5, 1600 / width, 1400 / height);
-      paintings = paintLandscape(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
+      paintings = paintLandscape(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)), fallback);
       ridges = paintings.filter((p) => p.ridge).map((p) => ({ points: p.ridge!, depth: p.depth }));
       mountainMask.width = Math.max(1, Math.round(width * Math.min(scale, 1)));
       mountainMask.height = Math.max(1, Math.round(height * Math.min(scale, 1)));
+      released = false;
+    }
+    /** Uploads every painting now, then frees the canvases that stay unchanged. */
+    function releasePaintings() {
+      textures.forEach((map) => { if (map instanceof THREE.CanvasTexture) renderer!.initTexture?.(map); });
+      const kept = new Set<HTMLCanvasElement>([mountainMask]);
+      paintings.forEach((p) => { if (p.shadowMap) kept.add(p.shadowMap); });
+      paintings.flatMap((p) => [p.canvas, p.normalMap, p.windMap]).concat(crops.splice(0)).forEach((canvas) => {
+        if (canvas && !kept.has(canvas)) canvas.width = canvas.height = 0;
+      });
+      released = true;
+    }
+    function resize() {
+      if (disposed) return;
+      const box = container!.getBoundingClientRect();
+      const nextWidth = Math.max(1, Math.round(box.width));
+      const nextHeight = Math.max(1, Math.round(box.height));
+      // ResizeObserver also reports the initial size; never rebuild an unchanged scene.
+      if (paintings.length && nextWidth === width && nextHeight === height) return;
+      releaseDrag(true);
+      width = nextWidth;
+      height = nextHeight;
+      const initial = moonPosition(width, height);
+      moon = clampMoon(userPlaced ? { ...moon, radius: initial.radius } : initial, width, height, point);
+      if (reset) reset = { from: moon, elapsed: 0 };
+      paint();
       dirty = true;
       if (fallback) { showFallback(); return; }
       clearScene();
@@ -287,12 +379,34 @@ function Landscape() {
         textures.push(waveBoundary.value);
       }
       plane(skyFragment, 0, 0);
-      plane(cloudFragment, 1.25, 0);
       geese = createGeese(scene, flightSchedule);
-      paintings.forEach((p, i) => plane(p.kind === "moon" ? moonFragment : paintFragment, i + 1, p.depth, p));
-      plane(mistFragment, 5.5, 3);
+      // Shade only cells a layer can draw into and no later opaque layer hides.
+      const layered = paintings.filter((p) => p.kind !== "moon");
+      const { columns, rows, layers: cells } = measureCells(layered[0].canvas.width, layered[0].canvas.height,
+        layered.map((p) => ({
+          // Plants draw only where their artwork or wind mask is nonzero.
+          sources: p.windMap ? [p.canvas, p.windMap] : [p.canvas],
+          // Displaced plants and translucent shallows never hide what is beneath.
+          occluder: p.kind === "paint" || p.kind === "water",
+        })));
+      const hiddenBelow = occlusion(layered.map((p, i) => ({ order: paintings.indexOf(p) + 1, opaque: cells[i].opaque })),
+        columns, rows);
+      paintings.forEach((p, i) => {
+        if (p.kind === "moon") { plane(moonFragment, i + 1, p.depth, p); return; }
+        const { occupied } = cells[layered.indexOf(p)];
+        // Water layers dilate further: their wave distortion samples a few pixels away.
+        const dilation = p.kind === "water" || p.kind === "shallows" ? 2 : 1;
+        const shaded = toCoverage(occupied, columns, rows, dilation, hiddenBelow(i + 1));
+        const content = toCoverage(occupied, columns, rows, dilation).bounds;
+        plane(paintFragment, i + 1, p.depth, p, shaded.bounds, shaded, content ?? FULL);
+      });
+      const cloud = toCoverage(rectCells(CLOUD_RECT, columns, rows), columns, rows, 0, hiddenBelow(1.25));
+      plane(cloudFragment, 1.25, 0, undefined, cloud.bounds, cloud);
+      const mist = toCoverage(rectCells(MIST_RECT, columns, rows), columns, rows, 0, hiddenBelow(5.5));
+      plane(mistFragment, 5.5, 3, undefined, mist.bounds, mist);
       updateMoon(true);
       updateIllumination();
+      releasePaintings();
     }
     function render(now: number) {
       if (disposed) return;
@@ -467,7 +581,6 @@ function Landscape() {
       document.removeEventListener("visibilitychange", visibility);
       renderer?.domElement.removeEventListener("webglcontextlost", lost);
       clearScene();
-      geometry.dispose();
       renderer?.dispose();
       renderer?.domElement.remove();
       fallbackCanvas?.remove();

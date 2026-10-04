@@ -65,7 +65,11 @@ function lightingContour(x: number, band: number) {
     Math.sin(x * 29 + band * 2.5) * 0.007
   );
 }
-export function paintLandscape(w: number, h: number): Painting[] {
+/**
+ * WebGL computes its ripples live, so it can skip the static river that only
+ * the Canvas fallback draws. The random sequence is consumed either way.
+ */
+export function paintLandscape(w: number, h: number, includeFallback = true): Painting[] {
   const paintings: Painting[] = [];
   const random = seeded(41);
   const add = (depth: number, kind: Painting["kind"] = "paint") => {
@@ -241,25 +245,29 @@ export function paintLandscape(w: number, h: number): Painting[] {
   // from the wave normals, so no bright dashes remain glued to moving water.
   const river = ctx;
   const riverPainting = paintings[paintings.length - 1];
-  const stillRiver = surface(w, h);
-  stillRiver.ctx.drawImage(paintings[paintings.length - 1].canvas, 0, 0);
-  paintings[paintings.length - 1].fallback = stillRiver.canvas;
-  ctx = stillRiver.ctx;
+  const stillRiver = includeFallback ? surface(w, h) : undefined;
+  if (stillRiver) {
+    stillRiver.ctx.drawImage(riverPainting.canvas, 0, 0);
+    riverPainting.fallback = stillRiver.canvas;
+  }
   for (let i = 0; i < 1000; i++) {
     const y = horizon + random() * (h - horizon),
       dist = (y - horizon) / (h - horizon),
       x = random() * w;
-    ctx.strokeStyle = `rgba(211,219,208,${random() * 0.15 * dist})`;
+    const alpha = random() * 0.15 * dist, length = random() * w * 0.065 * dist + 1;
+    if (!stillRiver) continue;
+    ctx = stillRiver.ctx;
+    ctx.strokeStyle = `rgba(211,219,208,${alpha})`;
     ctx.lineWidth = 0.4 + dist * 0.9;
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(x + random() * w * 0.065 * dist + 1, y);
+    ctx.lineTo(x + length, y);
     ctx.stroke();
   }
   // Preserve the old moon-path random consumption; direct light is now live.
   for (let i = 0; i < 800; i++) random();
   // Dissolve the river into the mist rather than exposing the texture's straight edge.
-  for (const waterContext of [river, stillRiver.ctx]) {
+  for (const waterContext of stillRiver ? [river, stillRiver.ctx] : [river]) {
     waterContext.save();
     waterContext.globalCompositeOperation = "destination-in";
     const riverFade = waterContext.createLinearGradient(
