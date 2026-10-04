@@ -4,6 +4,7 @@ import Landscape from "./Landscape";
 import { moonPosition } from "./composition";
 import { screenMoon } from "./moon";
 import * as clouds from "./clouds";
+import { getCloudAtlas } from "./clouds";
 import * as coverage from "./coverage";
 import * as painting from "./painting";
 import { cloudFragment, moonFragment } from "./shaders";
@@ -184,7 +185,7 @@ test("shared weather and lighting survive hidden tabs and resize without catchin
   };
   const shared = ["uAirOffset", "uWaveBasis", "uMoon", "uLightDirection", "uMoonVisibility",
     "uDirectIntensity", "uIncidentIntensity", "uAmbientGain", "uSourceDirection",
-    "uSourceTangentX", "uSourceTangentY", "uSourceCovariance", "uCloudMap"];
+    "uSourceTangentX", "uSourceTangentY", "uSourceCovariance", "uCloudMap", "uCloudBasis", "uCloudPhase"];
   materials().forEach((material) => {
     shared.forEach((key) => expect(material.uniforms[key]).toBe(uniforms[key]));
   });
@@ -258,7 +259,12 @@ test("the single cloud layer covers the moon before the mountain silhouettes", (
   const texture = ((clouds[0] as THREE.Mesh).material as THREE.ShaderMaterial).uniforms.uCloudMap.value;
   expect(texture).toBeInstanceOf(THREE.DataTexture);
   expect(texture.colorSpace).toBe(THREE.NoColorSpace);
-  expect(texture.minFilter).toBe(THREE.LinearFilter);
+  expect(texture.magFilter).toBe(THREE.LinearFilter);
+  expect(texture.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+  expect(texture.generateMipmaps).toBe(true);
+  const { uniforms } = (clouds[0] as THREE.Mesh).material as THREE.ShaderMaterial;
+  expect(uniforms.uCloudPhase.value.toArray()).toEqual([...getCloudAtlas().phase]);
+  expect(uniforms.uCloudBasis.value.toArray()).toEqual([...getCloudAtlas().basis]);
   expect(texture.wrapS).toBe(THREE.RepeatWrapping);
 });
 

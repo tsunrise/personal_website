@@ -1,16 +1,33 @@
+import { CLOUD_ANCHOR, CLOUD_HAZE, CLOUD_LAYERS, CLOUD_MIN_RISE } from "./clouds";
+import { WATER_HORIZON } from "./composition";
+
+const f = (value: number) => Number.isInteger(value) ? `${value}.` : `${value}`;
+const [near, far] = CLOUD_LAYERS;
+
 /** Counterpart of clouds.ts; all radiance is linear and all metadata stays linear. */
 export const cloudGLSL = `
 uniform sampler2D uCloudMap;
 uniform vec2 uMoonSky;
+uniform vec2 uCloudBasis;
+uniform vec4 uCloudPhase;
 
 vec3 cloudLinear(vec3 color){
  return mix(color/12.92,pow((color+.055)/1.055,vec3(2.4)),step(vec3(.04045),color));
 }
 float cloudLayerDepth(vec2 uv,bool farLayer){
- vec2 p=(vec2(uv.x*uAspect,uv.y)-uAirOffset*vec2(.0015,.0003))*.25;
- p+=farLayer?vec2(.52,.1225):vec2(.495,.14);
+ float rise=uv.y-${f(WATER_HORIZON)};
+ if(rise<=${f(CLOUD_MIN_RISE)})return 0.;
+ // Project onto a flat layer through the water camera, then drift with the
+ // winds aloft. Atlas X runs along the night's prevailing axis.
+ float z=(farLayer?${f(far.altitude)}:${f(near.altitude)})/rise;
+ vec2 p=vec2((uv.x-${f(CLOUD_ANCHOR)})*uAspect*z,z)-uAirOffset*(farLayer?${f(far.drift)}:${f(near.drift)});
+ p=vec2(dot(p,uCloudBasis),p.y*uCloudBasis.x-p.x*uCloudBasis.y)/(farLayer?${f(far.tile)}:${f(near.tile)});
+ p+=farLayer?uCloudPhase.zw:uCloudPhase.xy;
  vec4 cloudSample=texture2D(uCloudMap,p);
- return (farLayer?cloudSample.g:cloudSample.r)*2.*smoothstep(.15,.5,uv.y);
+ // Aerial perspective through the hazy boundary layer, normalized at the frame top.
+ float haze=smoothstep(${f(CLOUD_MIN_RISE)},${f(CLOUD_MIN_RISE * 3)},rise)
+  *exp(min(0.,-${f(CLOUD_HAZE)}*(1./rise-${f(1 / (1 - WATER_HORIZON))})));
+ return (farLayer?cloudSample.g:cloudSample.r)*2.*haze;
 }
 vec2 cloudDepths(vec2 uv){
  return vec2(cloudLayerDepth(uv,false),cloudLayerDepth(uv,true));

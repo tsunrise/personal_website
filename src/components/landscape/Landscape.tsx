@@ -4,8 +4,8 @@ import { drawFallback, paintLandscape, Painting } from "./painting";
 import { paintBridgeWaterShadow } from "./bridge";
 import { createGeese, createFlightSchedule } from "./geese";
 import { createWind } from "./wind";
-import { moonPosition } from "./composition";
-import { cloudTransmission, getCloudAtlas } from "./clouds";
+import { moonPosition, WATER_HORIZON } from "./composition";
+import { CLOUD_MIN_RISE, cloudTransmission, getCloudAtlas } from "./clouds";
 import { LightingState, sampleLighting } from "./lighting";
 import {
   canResetMoon, clampMoon, interpolateMoon, Moon, moonLight, MOON_DEPTH,
@@ -19,7 +19,7 @@ const FRAME_INTERVAL = 1000 / 60;
 const BRIDGE_DEPTH = 4;
 const FULL: UvRect = { x0: 0, y0: 0, x1: 1, y1: 1 };
 // Cloud optical depth is zero below this sky UV; mist is invisible outside its band.
-const CLOUD_RECT: UvRect = { x0: 0, y0: 0.15, x1: 1, y1: 1 };
+const CLOUD_RECT: UvRect = { x0: 0, y0: WATER_HORIZON + CLOUD_MIN_RISE, x1: 1, y1: 1 };
 const MIST_RECT: UvRect = { x0: 0, y0: 0.18, x1: 1, y1: 0.5 };
 
 /** A full-plane quad trimmed to a UV rectangle; each pixel keeps the same vUv. */
@@ -108,6 +108,8 @@ function Landscape() {
       uWaveBasis: { value: new THREE.Vector2(wind.state.waveBasis.x, wind.state.waveBasis.z) },
       uWaterEnergy: { value: wind.state.waterEnergy },
       uCurrentOffset: { value: new THREE.Vector2() },
+      uCloudBasis: { value: new THREE.Vector2() },
+      uCloudPhase: { value: new THREE.Vector4() },
     };
     const finePointer = window.matchMedia("(pointer: fine)");
     const point = { x: 0, y: 0 }, target = { x: 0, y: 0 };
@@ -358,11 +360,17 @@ function Landscape() {
       renderer!.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       maskTexture = texture(mountainMask);
       const atlas = getCloudAtlas();
+      weather.uCloudBasis.value.fromArray(atlas.basis);
+      weather.uCloudPhase.value.fromArray(atlas.phase);
       cloudMap.value = new THREE.DataTexture(atlas.data, atlas.size, atlas.size, THREE.RGBAFormat);
       cloudMap.value.colorSpace = THREE.NoColorSpace;
       cloudMap.value.wrapS = cloudMap.value.wrapT = THREE.RepeatWrapping;
-      cloudMap.value.minFilter = cloudMap.value.magFilter = THREE.LinearFilter;
-      cloudMap.value.generateMipmaps = false;
+      // Perspective compresses distant cloud toward the horizon. Mipmaps
+      // prefilter only there; the upper sky is magnified and matches the CPU.
+      cloudMap.value.magFilter = THREE.LinearFilter;
+      cloudMap.value.minFilter = THREE.LinearMipmapLinearFilter;
+      cloudMap.value.anisotropy = Math.min(8, renderer!.capabilities?.getMaxAnisotropy?.() ?? 1);
+      cloudMap.value.generateMipmaps = true;
       cloudMap.value.flipY = false;
       cloudMap.value.needsUpdate = true;
       textures.push(cloudMap.value);

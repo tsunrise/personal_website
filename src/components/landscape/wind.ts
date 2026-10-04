@@ -17,7 +17,7 @@ export function createBreezeProfile(random = Math.random): BreezeProfile {
 
 // Choose the night once per page load, independently of the artwork's seed.
 // Module lifetime also keeps React remounts/Strict Mode from choosing new weather.
-const pageBreeze = createBreezeProfile();
+export const pageBreeze = createBreezeProfile();
 
 // World coordinates: +x is right, +z is across the river, away from the viewer.
 // Quintic value noise gives correlated gusts without a repeating sine-wave beat.
